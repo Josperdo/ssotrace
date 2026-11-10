@@ -1,0 +1,21 @@
+# INTENTIONALLY INSECURE. LOCAL TESTING ONLY.
+#
+# A throwaway Keycloak identity provider for generating SSO traffic to test
+# ssotrace against. It runs in dev mode (HTTP, in-memory database, relaxed
+# defaults) and is bound to 127.0.0.1 so nothing else on the network can
+# reach it. Never expose it, and never reuse its credentials anywhere.
+#
+# Start:  make lab-up    (needs lab/.env; copy it from lab/.env.example)
+# Stop:   make lab-down
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    command: start-dev
+    environment:
+      # Keycloak 26+ names for the initial admin account.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?set in lab/.env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set in lab/.env}
+    ports:
+      # Loopback only. "8080:8080" would listen on every interface.
+      - "127.0.0.1:8080:8080"

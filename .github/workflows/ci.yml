@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: CI only needs to read the code.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        # macOS added to matrix when repo goes public
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7 # TODO: pin to commit SHA before public release
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7 # TODO: pin to commit SHA before public release
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Build static binary (no cgo)
+        run: CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/ssotrace
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9 # TODO: pin to commit SHA before public release
+        with:
+          version: latest
+
+      - name: Vulnerability check
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

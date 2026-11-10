@@ -1,0 +1,16 @@
+.private/
+/bin/
+/dist/
+coverage.out
+*.test
+.DS_Store
+.vscode/
+.idea/
+lab/.env
+lab/captures/
+# Never commit HAR files except synthetic fixtures
+*.har
+!testdata/**/*.har
+
+# Local AI assistant instructions; not part of the public repo
+CLAUDE.md

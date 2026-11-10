@@ -1,0 +1,42 @@
+#!/bin/sh
+# Blocks commits that would publish private or sensitive files.
+# Installed with `make hooks`. This is a second line of defense behind
+# .gitignore: it also catches files added with `git add -f`.
+# If it blocks you, unstage the file; don't bypass it with --no-verify.
+
+# reason_blocked prints why a path must not be committed, or nothing if it
+# is fine. Kept as a function (not inline in $(...)) because old shells,
+# including macOS /bin/sh, misparse `case` patterns inside $(...).
+reason_blocked() {
+	# Order matters: the first matching pattern wins.
+	case "$1" in
+	.private/*) echo "private files never leave this machine" ;;
+	CLAUDE.md) echo "local assistant instructions stay out of the public repo" ;;
+	lab/.env) echo "lab credentials; commit lab/.env.example instead" ;;
+	testdata/*) ;; # synthetic fixtures, including .har files, are allowed
+	*.[hH][aA][rR]) echo "HAR files may contain live session tokens" ;;
+	esac
+}
+
+status=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Split on newlines only, so paths containing spaces stay intact.
+old_ifs=$IFS
+IFS='
+'
+for path in $staged; do
+	reason=$(reason_blocked "$path")
+	if [ -n "$reason" ]; then
+		[ "$status" -eq 0 ] && echo "pre-commit: refusing to commit these files:" >&2
+		echo "  $path  ($reason)" >&2
+		status=1
+	fi
+done
+IFS=$old_ifs
+
+if [ "$status" -ne 0 ]; then
+	echo >&2
+	echo "Unstage them with: git restore --staged <path>" >&2
+fi
+exit "$status"
