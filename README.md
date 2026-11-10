@@ -27,12 +27,14 @@ The result is a single static binary with no runtime dependencies.
 ## Usage
 
 ```
-ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color]
-ssotrace redact   <file.har> -o <out.har>
-ssotrace scan     <file.har>
+ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
+ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
+ssotrace scan     <file.har> [--max-size SIZE]
 ssotrace version
 ssotrace help
 ```
+
+HAR files larger than 256 MiB are refused by default. Raise the limit with `--max-size`, for example `--max-size 1GiB`.
 
 Exit codes: `0` no failures found, `1` at least one failure found, `2` usage or input error.
 

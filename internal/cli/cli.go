@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+
+	"github.com/Josperdo/ssotrace/internal/har"
 )
 
 // Exit codes are part of the public contract: scripts and CI jobs branch on
@@ -32,11 +34,14 @@ type BuildInfo struct {
 const usageText = `ssotrace diagnoses failed SSO logins from a HAR file and redacts it so it is safe to share.
 
 Usage:
-  ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color]
-  ssotrace redact   <file.har> -o <out.har>
-  ssotrace scan     <file.har>
+  ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
+  ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
+  ssotrace scan     <file.har> [--max-size SIZE]
   ssotrace version
   ssotrace help
+
+Options:
+  --max-size SIZE  largest HAR file to read, e.g. 512MiB or 1GiB (default 256MiB)
 
 Exit codes:
   0  no FAIL findings
@@ -75,6 +80,7 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("diagnose")
 	format := fs.String("format", "text", "output format: text, json, or markdown")
 	_ = fs.Bool("no-color", false, "disable colored output")
+	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
 	if done {
@@ -88,12 +94,16 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	default:
 		return usageError(stderr, fmt.Sprintf("diagnose: invalid --format %q (want text, json, or markdown)", *format))
 	}
+	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+		return ExitUsage
+	}
 	return notImplemented(stderr, "diagnose")
 }
 
 func runRedact(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("redact")
 	out := fs.String("o", "", "path for the redacted HAR (required)")
+	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
 	if done {
@@ -111,11 +121,15 @@ func runRedact(args []string, stdout, stderr io.Writer) int {
 	if samePath(pos[0], *out) {
 		return usageError(stderr, "redact: -o must not be the input file")
 	}
+	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+		return ExitUsage
+	}
 	return notImplemented(stderr, "redact")
 }
 
 func runScan(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("scan")
+	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
 	if done {
@@ -124,7 +138,31 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 	if code, ok := requireOneFile("scan", pos, stderr); !ok {
 		return code
 	}
+	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+		return ExitUsage
+	}
 	return notImplemented(stderr, "scan")
+}
+
+// loadHAR loads path and reports any failure as an input error. Usage is
+// not printed: the command line was fine, the file was not.
+func loadHAR(path string, maxBytes int64, stderr io.Writer) (*har.HAR, bool) {
+	h, err := har.Load(path, maxBytes)
+	if err == nil {
+		return h, true
+	}
+	// har.Load errors already start with the path (or "open <path>").
+	_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+	if errors.Is(err, har.ErrTooLarge) {
+		_, _ = fmt.Fprintln(stderr, "If this file is really a HAR export, raise the limit with --max-size, e.g. --max-size 1GiB.")
+	}
+	return nil, false
+}
+
+func addMaxSizeFlag(fs *flag.FlagSet) *byteSize {
+	size := byteSize(har.DefaultMaxBytes)
+	fs.Var(&size, "max-size", "largest HAR file to read, e.g. 512MiB")
+	return &size
 }
 
 // newFlagSet returns a FlagSet that reports errors to us instead of printing

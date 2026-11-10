@@ -13,10 +13,10 @@ HAR file → har.Load (bounded) → flow.Build (correlate) → diagnose.Run (rul
 |---------|----------------|
 | `cmd/ssotrace` | Process entry point: wires arguments, output streams, version stamps, and the exit code to `internal/cli`. |
 | `internal/cli` | Parses subcommands and flags and maps results to exit codes (`0` no failures, `1` failures found, `2` usage or input error). |
-| `internal/har` | HAR 1.2 types and a loader that enforces size limits on untrusted input. |
+| `internal/har` | HAR 1.2 types, a streaming loader that enforces size limits on untrusted input, and header, query, and form lookups that smooth over differences between browser exports. |
 | `internal/saml` | Decodes SAML messages from the POST and Redirect bindings, models them, and verifies signatures. |
 | `internal/oidc` | Parses OAuth 2.0 and OpenID Connect requests, callbacks, and tokens. |
-| `internal/flow` | Correlates HAR entries into SSO flows, pairing each request with its response. |
+| `internal/flow` | Recognizes which HAR entries carry SAML or OAuth/OIDC messages, and correlates them into SSO flows. |
 | `internal/diagnose` | The rule engine: severities, findings, the `Rule` interface, and the rule registry. |
 | `internal/redact` | Removes credentials from a HAR with SSO-aware rules, then scans the result for leaks. |
 | `internal/report` | Renders findings as text, JSON, or Markdown. |
@@ -25,7 +25,8 @@ HAR file → har.Load (bounded) → flow.Build (correlate) → diagnose.Run (rul
 
 ## Boundaries
 
-- **Rules are pure.** A rule reads the parsed flow and a reference time from its `Context` and returns findings. Rules do no I/O and never read the system clock, so a given HAR always produces the same diagnosis.
+- **Rules are pure.** A rule reads only its `Context` (the loaded HAR) and returns findings. Rules do no I/O and never read the system clock, so a given HAR always produces the same diagnosis.
+- **Input is bounded before it is trusted.** `har.Load` rejects oversized files before reading them and counts bytes while decoding. Error messages describe what was wrong without echoing file content.
 - **Secrets cross into output only through `internal/secret`.** Evidence values are made display-safe before they reach a renderer.
 - **Redaction verifies itself.** `redact.Apply` output always goes through `redact.Scan`; if the scan finds a leak, nothing is written.
 - **Nothing is public API.** Everything lives under `internal/`, so package boundaries can change without breaking anyone.

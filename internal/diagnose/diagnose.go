@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/Josperdo/ssotrace/internal/har"
 )
 
 // Severity ranks how bad a finding is. The zero value is Pass so that an
@@ -77,10 +79,14 @@ type Finding struct {
 
 // Context is everything a rule may look at.
 //
-// It is empty for now. It will carry the parsed SSO flow and an injected
-// reference time. Rules must take "now" from Context, never from time.Now(),
-// so results depend only on the HAR and tests stay deterministic.
-type Context struct{}
+// Rules read only from Context, never from files, the network, or the
+// system clock: any reference time must come from here (or from HAR
+// timestamps), never from time.Now(). That keeps a diagnosis a pure
+// function of its input, so tests are deterministic.
+type Context struct {
+	// HAR is the loaded capture. Rules must tolerate nil and report nothing.
+	HAR *har.HAR
+}
 
 // Rule is one diagnostic check. ID must be stable and never reused.
 type Rule interface {
@@ -121,6 +127,30 @@ func (r *Registry) Rules() []Rule {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
 	return out
+}
+
+// DefaultRules returns a registry holding every built-in rule.
+func DefaultRules() (*Registry, error) {
+	reg := NewRegistry()
+	for _, r := range []Rule{
+		noSSOTraffic{},
+		missingRequestBodies{},
+	} {
+		if err := reg.Register(r); err != nil {
+			return nil, fmt.Errorf("default rules: %w", err)
+		}
+	}
+	return reg, nil
+}
+
+// Run checks ctx against every rule in reg, in rule ID order, and returns
+// all findings.
+func Run(ctx Context, reg *Registry) []Finding {
+	var findings []Finding
+	for _, r := range reg.Rules() {
+		findings = append(findings, r.Check(ctx)...)
+	}
+	return findings
 }
 
 // HasFailures reports whether any finding has Fail severity. The CLI uses it

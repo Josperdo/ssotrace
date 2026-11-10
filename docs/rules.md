@@ -33,4 +33,29 @@ How to fix:
 
 ## Rules
 
-No rules are defined yet.
+### HAR001 — No SSO traffic found
+Severity: FAIL
+
+What it means:
+None of the requests in the file carries a SAML message (`SAMLRequest`, `SAMLResponse`, or `SAMLart`) or an OAuth/OIDC authorization request, callback, or token request. Without that traffic there is nothing to diagnose.
+
+Common causes:
+- "Preserve log" was off, so the browser cleared the Network tab on one of the redirects between the application and the identity provider.
+- Recording started after the sign-in had already happened.
+- The file was captured on the wrong tab or window.
+
+How to fix:
+Capture again. Open the browser's developer tools, go to the Network tab, and turn on "Preserve log" (Firefox: "Persist Logs") before starting. Start the sign-in from the beginning, ideally in a private window, and export the HAR once the error appears.
+
+### HAR002 — Request bodies missing
+Severity: WARN
+
+What it means:
+One or more requests report sending a body (`bodySize` greater than 0), but the HAR does not contain it. SAML responses, OIDC `form_post` callbacks, and token requests travel in request bodies, so ssotrace cannot check them.
+
+Common causes:
+- The file was run through a HAR sanitizer or other redaction tool that removed request content.
+- The browser did not record request content for those requests.
+
+How to fix:
+Export the HAR again directly from the browser's developer tools and run ssotrace on that original file. To share it safely afterwards, use `ssotrace redact`, which keeps the SSO messages needed for diagnosis.

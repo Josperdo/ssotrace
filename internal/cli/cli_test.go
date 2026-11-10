@@ -2,12 +2,28 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// Placeholders in test args, replaced with real temp file paths.
+const (
+	validHAR     = "{valid}"     // a minimal, well-formed HAR
+	malformedHAR = "{malformed}" // a JSON file that is not a HAR
+	missingHAR   = "{missing}"   // a path that does not exist
+)
+
 func TestRun(t *testing.T) {
 	info := BuildInfo{Version: "v0.0.0-test", Commit: "abc1234", Date: "2026-01-01T00:00:00Z"}
+
+	dir := t.TempDir()
+	paths := map[string]string{
+		validHAR:     writeFile(t, dir, "valid.har", `{"log":{"version":"1.2","entries":[]}}`),
+		malformedHAR: writeFile(t, dir, "malformed.har", `{"not":"a har"}`),
+		missingHAR:   filepath.Join(dir, "missing.har"),
+	}
 
 	tests := []struct {
 		name       string
@@ -41,7 +57,7 @@ func TestRun(t *testing.T) {
 			wantStderr: `unknown command "frobnicate"`,
 		},
 		{
-			name:       "diagnose missing file",
+			name:       "diagnose missing file arg",
 			args:       []string{"diagnose"},
 			wantCode:   ExitUsage,
 			wantStderr: "missing <file.har>",
@@ -54,31 +70,31 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "diagnose bad format",
-			args:       []string{"diagnose", "x.har", "--format", "yaml"},
+			args:       []string{"diagnose", validHAR, "--format", "yaml"},
 			wantCode:   ExitUsage,
 			wantStderr: `invalid --format "yaml"`,
 		},
 		{
 			name:       "diagnose unknown flag",
-			args:       []string{"diagnose", "--bogus", "x.har"},
+			args:       []string{"diagnose", "--bogus", validHAR},
 			wantCode:   ExitUsage,
 			wantStderr: "flag provided but not defined: -bogus",
 		},
 		{
 			name:       "diagnose flags before file",
-			args:       []string{"diagnose", "--format", "json", "--no-color", "x.har"},
+			args:       []string{"diagnose", "--format", "json", "--no-color", validHAR},
 			wantCode:   ExitUsage,
 			wantStderr: "diagnose: not implemented yet",
 		},
 		{
 			name:       "diagnose flags after file",
-			args:       []string{"diagnose", "x.har", "--format", "json"},
+			args:       []string{"diagnose", validHAR, "--format", "json"},
 			wantCode:   ExitUsage,
 			wantStderr: "diagnose: not implemented yet",
 		},
 		{
 			name:       "diagnose flags on both sides of file",
-			args:       []string{"diagnose", "--no-color", "x.har", "--format=markdown"},
+			args:       []string{"diagnose", "--no-color", validHAR, "--format=markdown"},
 			wantCode:   ExitUsage,
 			wantStderr: "diagnose: not implemented yet",
 		},
@@ -86,7 +102,7 @@ func TestRun(t *testing.T) {
 			name:       "double dash makes dash-prefixed name a file",
 			args:       []string{"diagnose", "--", "-weird.har"},
 			wantCode:   ExitUsage,
-			wantStderr: "diagnose: not implemented yet",
+			wantStderr: "-weird.har: no such file",
 		},
 		{
 			name:       "diagnose -h prints usage to stdout",
@@ -95,8 +111,32 @@ func TestRun(t *testing.T) {
 			wantStdout: "Usage:",
 		},
 		{
+			name:       "diagnose nonexistent file",
+			args:       []string{"diagnose", missingHAR},
+			wantCode:   ExitUsage,
+			wantStderr: "no such file",
+		},
+		{
+			name:       "diagnose malformed file",
+			args:       []string{"diagnose", malformedHAR},
+			wantCode:   ExitUsage,
+			wantStderr: `not a HAR file: missing "log" object`,
+		},
+		{
+			name:       "diagnose file over --max-size",
+			args:       []string{"diagnose", validHAR, "--max-size", "1B"},
+			wantCode:   ExitUsage,
+			wantStderr: "raise the limit with --max-size",
+		},
+		{
+			name:       "diagnose bad --max-size",
+			args:       []string{"diagnose", validHAR, "--max-size", "512MB"},
+			wantCode:   ExitUsage,
+			wantStderr: `invalid size "512MB"`,
+		},
+		{
 			name:       "redact missing -o",
-			args:       []string{"redact", "in.har"},
+			args:       []string{"redact", validHAR},
 			wantCode:   ExitUsage,
 			wantStderr: "-o <out.har> is required",
 		},
@@ -108,28 +148,48 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "redact valid args",
-			args:       []string{"redact", "in.har", "-o", "out.har"},
+			args:       []string{"redact", validHAR, "-o", "out.har"},
 			wantCode:   ExitUsage,
 			wantStderr: "redact: not implemented yet",
 		},
 		{
-			name:       "scan missing file",
+			name:       "redact malformed input",
+			args:       []string{"redact", malformedHAR, "-o", "out.har"},
+			wantCode:   ExitUsage,
+			wantStderr: "not a HAR file",
+		},
+		{
+			name:       "scan missing file arg",
 			args:       []string{"scan"},
 			wantCode:   ExitUsage,
 			wantStderr: "missing <file.har>",
 		},
 		{
 			name:       "scan valid args",
-			args:       []string{"scan", "x.har"},
+			args:       []string{"scan", validHAR},
 			wantCode:   ExitUsage,
 			wantStderr: "scan: not implemented yet",
+		},
+		{
+			name:       "scan nonexistent file",
+			args:       []string{"scan", missingHAR},
+			wantCode:   ExitUsage,
+			wantStderr: "no such file",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			args := make([]string, len(tt.args))
+			for i, a := range tt.args {
+				if p, ok := paths[a]; ok {
+					a = p
+				}
+				args[i] = a
+			}
+
 			var stdout, stderr bytes.Buffer
-			code := Run(tt.args, &stdout, &stderr, info)
+			code := Run(args, &stdout, &stderr, info)
 
 			if code != tt.wantCode {
 				t.Errorf("exit code = %d, want %d", code, tt.wantCode)
@@ -138,6 +198,57 @@ func TestRun(t *testing.T) {
 			checkStream(t, "stderr", stderr.String(), tt.wantStderr)
 		})
 	}
+}
+
+// TestLoadErrorIsNotUsage: a bad file is an input problem, so the user gets
+// the reason, not a wall of usage text about flags they typed correctly.
+func TestLoadErrorIsNotUsage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	Run([]string{"scan", filepath.Join(t.TempDir(), "missing.har")}, &stdout, &stderr, BuildInfo{})
+	if strings.Contains(stderr.String(), "Usage:") {
+		t.Errorf("load error printed usage:\n%s", stderr.String())
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    int64
+		wantErr bool
+	}{
+		{"1024", 1024, false},
+		{"1B", 1, false},
+		{"512MiB", 512 << 20, false},
+		{"512mib", 512 << 20, false},
+		{"1 GiB", 1 << 30, false},
+		{"64KiB", 64 << 10, false},
+		{"512MB", 0, true}, // decimal units are refused, not guessed
+		{"0", 0, true},
+		{"-5MiB", 0, true},
+		{"1.5GiB", 0, true},
+		{"lots", 0, true},
+		{"", 0, true},
+		{"99999999999999GiB", 0, true}, // overflows int64
+	}
+	for _, tt := range tests {
+		got, err := parseByteSize(tt.in)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseByteSize(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("parseByteSize(%q) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+}
+
+func writeFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func checkStream(t *testing.T, name, got, want string) {
