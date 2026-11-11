@@ -1,0 +1,83 @@
+{
+  "realm": "ssotrace-lab",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Example",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${LAB_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "http://127.0.0.1:8081/saml/metadata",
+      "name": "ssotrace lab SP",
+      "protocol": "saml",
+      "enabled": true,
+      "baseUrl": "http://127.0.0.1:8081/",
+      "redirectUris": ["http://127.0.0.1:8081/*"],
+      "frontchannelLogout": true,
+      "attributes": {
+        "saml_assertion_consumer_url_post": "http://127.0.0.1:8081/saml/acs",
+        "saml_idp_initiated_sso_url_name": "lab-sp",
+        "saml.force.post.binding": "true",
+        "saml.authnstatement": "true",
+        "saml.server.signature": "true",
+        "saml.assertion.signature": "true",
+        "saml.client.signature": "false",
+        "saml.encrypt": "false",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#",
+        "saml_force_name_id_format": "true",
+        "saml_name_id_format": "email"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "config": {
+            "user.attribute": "email",
+            "attribute.name": "email",
+            "attribute.nameformat": "Basic",
+            "friendly.name": "email"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "urn:example:ssotrace-lab:wrong-audience",
+      "name": "Wrong-audience scenario (IdP-initiated only)",
+      "description": "Sends assertions to the lab SP but names a different audience, so the SP receives a Response meant for someone else.",
+      "protocol": "saml",
+      "enabled": true,
+      "redirectUris": ["http://127.0.0.1:8081/*"],
+      "attributes": {
+        "saml_assertion_consumer_url_post": "http://127.0.0.1:8081/saml/acs",
+        "saml_idp_initiated_sso_url_name": "wrong-audience",
+        "saml.force.post.binding": "true",
+        "saml.authnstatement": "true",
+        "saml.server.signature": "true",
+        "saml.assertion.signature": "true",
+        "saml.client.signature": "false",
+        "saml.encrypt": "false",
+        "saml.signature.algorithm": "RSA_SHA256",
+        "saml_signature_canonicalization_method": "http://www.w3.org/2001/10/xml-exc-c14n#",
+        "saml_force_name_id_format": "true",
+        "saml_name_id_format": "email"
+      }
+    }
+  ]
+}

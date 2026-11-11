@@ -46,11 +46,11 @@ hooks: ## Install git hooks from scripts/hooks
 	git config core.hooksPath scripts/hooks
 	@echo "git hooks installed from scripts/hooks"
 
-lab-up: ## Start the local Keycloak lab (needs lab/.env)
+lab-up: ## Start the local Keycloak + SP lab (needs lab/.env)
 	@test -f lab/.env || { echo "lab/.env missing: cp lab/.env.example lab/.env and edit it"; exit 1; }
-	$(LAB_COMPOSE) up -d
+	$(LAB_COMPOSE) up -d --build
 
-lab-down: ## Stop the local Keycloak lab
+lab-down: ## Stop the local lab and discard its state
 	$(LAB_COMPOSE) down
 
 clean: ## Remove build output

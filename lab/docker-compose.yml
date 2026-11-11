@@ -1,9 +1,10 @@
 # INTENTIONALLY INSECURE. LOCAL TESTING ONLY.
 #
-# A throwaway Keycloak identity provider for generating SSO traffic to test
-# ssotrace against. It runs in dev mode (HTTP, in-memory database, relaxed
-# defaults) and is bound to 127.0.0.1 so nothing else on the network can
-# reach it. Never expose it, and never reuse its credentials anywhere.
+# A throwaway Keycloak identity provider plus a minimal SAML service provider
+# for generating SSO traffic to test ssotrace against. Keycloak runs in dev
+# mode (HTTP, in-memory database, relaxed defaults). Both ports are bound to
+# 127.0.0.1 so nothing else on the network can reach them. Never expose this
+# lab, and never reuse its credentials anywhere.
 #
 # Start:  make lab-up    (needs lab/.env; copy it from lab/.env.example)
 # Stop:   make lab-down
@@ -11,11 +12,25 @@
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.2
-    command: start-dev
+    # --import-realm loads every JSON file in /opt/keycloak/data/import at
+    # startup, so the realm, user, and SAML client exist without clicking.
+    command: start-dev --import-realm
     environment:
       # Keycloak 26+ names for the initial admin account.
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?set in lab/.env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set in lab/.env}
+      # Substituted into the "${LAB_USER_PASSWORD}" placeholder in the realm
+      # file, so the password lives only in lab/.env.
+      LAB_USER_PASSWORD: ${LAB_USER_PASSWORD:?set in lab/.env}
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
     ports:
       # Loopback only. "8080:8080" would listen on every interface.
       - "127.0.0.1:8080:8080"
+
+  sp:
+    build: ./sp
+    # The SP never calls Keycloak directly: both SAML messages travel through
+    # the browser, which is exactly why they show up in a HAR.
+    ports:
+      - "127.0.0.1:8081:8081"

@@ -22,6 +22,7 @@ HAR file → har.Load (bounded) → flow.Build (correlate) → diagnose.Run (rul
 | `internal/report` | Renders findings as text, JSON, or Markdown. |
 | `internal/kb` | Maps vendor error codes to plain-English causes and fixes, from data embedded in the binary. |
 | `internal/secret` | Produces safe previews (short prefix plus length) of secret values for display. |
+| `internal/testutil` | Test-only. Builds synthetic fixtures at test time: throwaway RSA keys and self-signed certificates, signed SAML Responses, AuthnRequests in the Redirect binding, and HAR entries that carry them. Never linked into the binary. |
 
 ## Boundaries
 
@@ -30,3 +31,4 @@ HAR file → har.Load (bounded) → flow.Build (correlate) → diagnose.Run (rul
 - **Secrets cross into output only through `internal/secret`.** Evidence values are made display-safe before they reach a renderer.
 - **Redaction verifies itself.** `redact.Apply` output always goes through `redact.Scan`; if the scan finds a leak, nothing is written.
 - **Nothing is public API.** Everything lives under `internal/`, so package boundaries can change without breaking anyone.
+- **Fixtures are generated, not captured.** Tests build signed SAML traffic with `internal/testutil`, so no key or real capture is ever committed. The `lab/` environment (its own Go module) produces real captures for manual testing; they stay out of the repository.

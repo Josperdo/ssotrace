@@ -12,6 +12,8 @@ Test fixtures and golden files. Everything here is public, so everything here mu
 
 If you need a fixture that resembles a real capture, rebuild it by hand or in code with synthetic values. Do not edit a real capture down.
 
+For SAML fixtures, prefer generating them in the test with `internal/testutil` (for example `testutil.NewSAMLLogin`). It creates a fresh key and certificate each run, so there is no key material to commit.
+
 ## Golden files
 
 Expected rendered output lives in `testdata/golden/`. Regenerate it after an intentional output change with:
