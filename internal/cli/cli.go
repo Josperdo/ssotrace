@@ -6,11 +6,13 @@
 package cli
 
 import (
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Josperdo/ssotrace/internal/diagnose"
@@ -39,7 +41,7 @@ const usageText = `ssotrace diagnoses failed SSO logins from a HAR file and reda
 
 Usage:
   ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
-                    [--clock-skew DURATION]
+                    [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
   ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
   ssotrace scan     <file.har> [--max-size SIZE]
   ssotrace version
@@ -49,6 +51,10 @@ Options:
   --max-size SIZE          largest HAR file to read, e.g. 512MiB or 1GiB (default 256MiB)
   --clock-skew DURATION    how far apart IdP and SP clocks may be before a time
                            check fails, e.g. 90s or 5m (default 3m)
+  --idp-cert FILE          PEM file with the IdP signing certificate(s) you trust;
+                           without it, signatures prove integrity, not who signed
+  --sp-entity-id ID        the SP's entity ID, used to check the audience when the
+                           capture has no AuthnRequest (IdP-initiated logins)
 
 Exit codes:
   0  no FAIL findings
@@ -88,6 +94,8 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	format := fs.String("format", "text", "output format: text, json, or markdown")
 	_ = fs.Bool("no-color", false, "disable colored output")
 	skew := fs.Duration("clock-skew", diagnose.DefaultClockSkew, "how far apart IdP and SP clocks may be, e.g. 90s or 5m")
+	idpCert := fs.String("idp-cert", "", "PEM file with the IdP signing certificate(s) you trust")
+	spEntityID := fs.String("sp-entity-id", "", "the SP's entity ID, for checking IdP-initiated logins")
 	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
@@ -107,6 +115,14 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	default:
 		return usageError(stderr, fmt.Sprintf("diagnose: invalid --format %q (want text, json, or markdown)", *format))
 	}
+	var certs []*x509.Certificate
+	if *idpCert != "" {
+		var err error
+		if certs, err = loadCerts(*idpCert); err != nil {
+			_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+			return ExitUsage
+		}
+	}
 	h, ok := loadHAR(pos[0], int64(*maxSize), stderr)
 	if !ok {
 		return ExitUsage
@@ -122,7 +138,13 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
 		return ExitUsage
 	}
-	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: *skew}
+	ctx := diagnose.Context{
+		HAR:        h,
+		SAML:       flow.TraceSAML(h),
+		ClockSkew:  *skew,
+		IDPCerts:   certs,
+		SPEntityID: strings.TrimSpace(*spEntityID),
+	}
 	findings := diagnose.Run(ctx, reg)
 	if err := report.JSON(stdout, findings, ctx.SAML); err != nil {
 		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)

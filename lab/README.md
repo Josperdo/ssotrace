@@ -54,13 +54,13 @@ The capture holds two SAML messages:
 
 Settings below live in the admin console under *ssotrace-lab realm → Clients → `http://127.0.0.1:8081/saml/metadata`*. After each scenario, `make lab-down && make lab-up` resets everything.
 
-| Scenario | How to cause it | What the HAR shows |
-|---|---|---|
-| **Wrong audience** | Nothing to change. Browse to <http://127.0.0.1:8080/realms/ssotrace-lab/protocol/saml/clients/wrong-audience>. A second, pre-built client posts to the lab SP under a different entity ID. | `Audience` is `urn:example:ssotrace-lab:wrong-audience`, not the SP's entity ID |
-| **Wrong ACS URL** | *Settings → Valid redirect URIs* → `http://127.0.0.1:9999/*` | AuthnRequest asks for `…:8081/saml/acs`; Keycloak answers with an error page and no `SAMLResponse` |
-| **Expired assertion / clock skew** | *Advanced → Assertion Lifespan* → 1 second. Then in DevTools, *Command menu → Disable JavaScript*, log in, wait 5 seconds on Keycloak's **Continue** page, and click it. | POST timestamp is after `NotOnOrAfter`: the same symptom a skewed IdP clock causes |
-| **Rotated cert** | Capture once. Then *Realm settings → Keys → Add provider → rsa-generated* with a higher priority than the existing key, and capture again. | The second Response is signed with a certificate the first capture never saw |
-| **Unsigned assertion** | *Settings → Signature and Encryption*: turn off **Sign documents** and **Sign assertions** | No `<ds:Signature>` anywhere in the Response |
+| Scenario | How to cause it | What the HAR shows | What ssotrace reports |
+|---|---|---|---|
+| **Wrong audience** | Nothing to change. Browse to <http://127.0.0.1:8080/realms/ssotrace-lab/protocol/saml/clients/wrong-audience>. A second, pre-built client posts to the lab SP under a different entity ID. | `Audience` is `urn:example:ssotrace-lab:wrong-audience`, not the SP's entity ID | IdP-initiated, so there is no request to learn the SP from: SAML002 INFO. Run with `--sp-entity-id http://127.0.0.1:8081/saml/metadata` (or log in from the SP first in the same capture) for SAML002 FAIL |
+| **Wrong ACS URL** | *Settings → Valid redirect URIs* → `http://127.0.0.1:9999/*` | AuthnRequest asks for `…:8081/saml/acs`; Keycloak answers HTTP 400 and no `SAMLResponse` | SAML005 FAIL (IdP rejected the login request) |
+| **Expired assertion / clock skew** | *Advanced → Assertion Lifespan* → 1 second. Then in DevTools, *Command menu → Disable JavaScript*, log in, wait on Keycloak's **Continue** page, and click it. | POST timestamp is after `NotOnOrAfter`: the same symptom a skewed IdP clock causes | SAML006 WARN if the wait was within the 3-minute default tolerance; FAIL with `--clock-skew 0` or a wait over 3 minutes. Keycloak also stamps `NotOnOrAfter` before `IssueInstant` at a 1-second lifespan, which is its own SAML006 WARN |
+| **Rotated cert** | Save the current certificate first: copy the `X509Certificate` value from <http://127.0.0.1:8080/realms/ssotrace-lab/protocol/saml/descriptor> into `lab/captures/old-idp.cert`. Then *Realm settings → Keys → Add provider → rsa-generated* with a higher priority than the existing key, and capture. | The Response is signed with a certificate the saved one does not match | SAML013 FAIL with `--idp-cert lab/captures/old-idp.cert` (INFO without it) |
+| **Unsigned assertion** | *Settings → Signature and Encryption*: turn off **Sign documents** and **Sign assertions** | No `<ds:Signature>` anywhere in the Response | SAML007 FAIL |
 
 > These steps were written against Keycloak 26.8. If a menu has moved, the setting names are the same in the realm JSON (`saml.assertion.signature`, `saml.server.signature`, `redirectUris`, …).
 

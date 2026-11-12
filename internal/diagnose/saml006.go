@@ -51,6 +51,9 @@ func (validityWindow) Check(ctx Context) []Finding {
 				continue
 			}
 			checked++
+			if f, ok := emptyWindow(v, a, notBefore, notAfter); ok {
+				out = append(out, f)
+			}
 
 			var limit *bound
 			var outside time.Duration
@@ -165,4 +168,37 @@ func windowFinding(ctx Context, v responseView, a saml.Assertion, at time.Time, 
 		fix = "The SP probably accepts this today because it allows some clock skew, but a stricter SP or more drift will break it. " + fix
 	}
 	return Finding{RuleID: "SAML006", Severity: sev, Title: title, Detail: detail, Fix: fix, Evidence: ev}
+}
+
+// emptyWindow reports an assertion whose own timestamps contradict each
+// other: it stops being valid before it was issued, or before it starts
+// being valid. No clock, however well synchronized, can accept it without
+// relying on skew tolerance. Keycloak was seen producing this with a 1-second
+// Assertion Lifespan.
+func emptyWindow(v responseView, a saml.Assertion, notBefore, notAfter *bound) (Finding, bool) {
+	if notAfter == nil {
+		return Finding{}, false
+	}
+	var earlier *bound
+	if issued, err := saml.ParseTime(a.IssueInstant); err == nil && !notAfter.t.After(issued) {
+		earlier = &bound{label: "Assertion IssueInstant", raw: a.IssueInstant, t: issued}
+	} else if notBefore != nil && !notAfter.t.After(notBefore.t) {
+		earlier = notBefore
+	}
+	if earlier == nil {
+		return Finding{}, false
+	}
+	return Finding{
+		RuleID:   "SAML006",
+		Severity: Warn,
+		Title:    "Assertion expires before it becomes valid",
+		Detail: fmt.Sprintf("The assertion's %s is not after its %s, so its validity window is empty. "+
+			"An SP can only accept it by stretching its clock-skew tolerance, and a strict SP will always reject it.", notAfter.label, earlier.label),
+		Fix: "Increase the assertion lifetime in the IdP (Keycloak calls it \"Assertion Lifespan\"). A few minutes is typical; a value of a few seconds is usually a mistake.",
+		Evidence: []Evidence{
+			{Label: "Response", Value: where(v.Msg)},
+			{Label: earlier.label, Value: earlier.raw},
+			{Label: notAfter.label, Value: notAfter.raw},
+		},
+	}, true
 }

@@ -92,6 +92,18 @@ func (invalidSignature) Check(ctx Context) []Finding {
 		if p.sig.Verified {
 			continue
 		}
+		if p.sig.Error == saml.ErrNoEmbeddedCert {
+			out = append(out, Finding{
+				RuleID:   "SAML008",
+				Severity: Info,
+				Title:    p.label + " signature could not be checked",
+				Detail: "The " + p.label + " is signed, but the signature does not include the signing certificate. " +
+					"Some IdPs leave it out on purpose because the SP already has it. ssotrace can only verify signatures that carry their certificate, so this one is unchecked, not invalid.",
+				Fix:      "No fix needed if the SP accepts the login. If the SP reports a signature error, compare its configured IdP certificate with the IdP's current signing certificate.",
+				Evidence: []Evidence{{Label: p.label, Value: where(p.msg)}},
+			})
+			continue
+		}
 		f := Finding{
 			RuleID:   "SAML008",
 			Severity: Fail,

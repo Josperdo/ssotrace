@@ -13,6 +13,11 @@ import (
 	dsig "github.com/russellhaering/goxmldsig"
 )
 
+// ErrNoEmbeddedCert is Signature.Error when the signature carries no
+// certificate to check it with. Some IdPs omit it on purpose and expect
+// the SP to already have it, so it is not evidence of tampering.
+const ErrNoEmbeddedCert = "signature carries no X509Certificate"
+
 // TrustEmbedded marks a signature checked only against the certificate the
 // message itself carries.
 const TrustEmbedded = "embedded-certificate"
@@ -75,7 +80,7 @@ func verify(el *etree.Element, at time.Time) (Signature, *etree.Element) {
 func embeddedCert(sigEl *etree.Element) (*x509.Certificate, error) {
 	certEl := sigEl.FindElement("./KeyInfo/X509Data/X509Certificate")
 	if certEl == nil {
-		return nil, errors.New("signature carries no X509Certificate")
+		return nil, errors.New(ErrNoEmbeddedCert)
 	}
 	der, err := decodeBase64(text(certEl))
 	if err != nil {

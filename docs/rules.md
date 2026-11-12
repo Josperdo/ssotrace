@@ -60,6 +60,32 @@ Common causes:
 How to fix:
 Export the HAR again directly from the browser's developer tools and run ssotrace on that original file. To share it safely afterwards, use `ssotrace redact`, which keeps the SSO messages needed for diagnosis.
 
+### HAR003 — Redirect loop between the application and the IdP
+Severity: FAIL
+
+What it means:
+The same sign-in request (a request answered with a redirect, or one carrying a SAML or OAuth message) was made 3 or more times within 30 seconds. The IdP keeps completing the login and the application keeps sending the user back. Requests are compared without their query string, and ordinary page loads and polling are ignored, as are retries spread out over more than 30 seconds.
+
+Common causes:
+- The application's session cookie lacks `SameSite=None; Secure` and is dropped on the cross-site POST from the IdP.
+- The cookie is marked `Secure` but the site is served over http, or its domain or path does not match.
+- The application rejects the login (see other findings) and silently starts a new one.
+
+How to fix:
+Check the response to the login callback: it must set the session cookie, and the next request must send it back.
+
+### HAR004 — IdP error code found
+Severity: WARN
+
+What it means:
+An identity provider's own error code appears in a URL, redirect target, form body, or HTML, JSON, XML, or text response body. ssotrace recognizes Microsoft Entra ID (`AADSTS` plus 5 or 6 digits), AD FS (`MSIS` plus 4 digits), Okta (`E0000` plus 3 digits), and the standard OAuth 2.0 and OpenID Connect `error` values. JavaScript files are not searched, because login pages ship scripts that list every code they might display. Each code is reported once, with where it first appeared.
+
+Common causes:
+The IdP refused the login and said why in its own terms.
+
+How to fix:
+Look up the code in the identity provider's documentation, or search the IdP's sign-in logs for it at the time of the capture.
+
 ### SAML001 — IdP returned an error instead of a login
 Severity: FAIL
 
@@ -78,7 +104,7 @@ Follow the fix for the second-level code in the finding. The IdP's sign-in logs 
 Severity: FAIL (INFO when it cannot be checked)
 
 What it means:
-The assertion's `Audience` is not the SP's entity ID, so the SP will reject it. ssotrace takes the SP's entity ID from the `Issuer` of the AuthnRequest the Response answers, or, for IdP-initiated logins, from another AuthnRequest in the capture that used the same ACS URL. If there is none, the finding is INFO: the audience is shown but cannot be checked.
+The assertion's `Audience` is not the SP's entity ID, so the SP will reject it. ssotrace takes the SP's entity ID from `--sp-entity-id` if you supply it, otherwise from the `Issuer` of the AuthnRequest the Response answers, or, for IdP-initiated logins, from another AuthnRequest in the capture that used the same ACS URL. If there is none, the finding is INFO: the audience is shown but cannot be checked. Pass `--sp-entity-id` to check IdP-initiated logins.
 
 Common causes:
 - The IdP application was set up with the wrong Entity ID / Identifier / Audience URI, often an old, staging, or `http` vs `https` value.
@@ -133,7 +159,7 @@ For an IdP rejection, check the IdP's logs and the application's registered ACS 
 Severity: FAIL (WARN when within the clock-skew tolerance)
 
 What it means:
-The browser delivered the assertion before its `NotBefore` time or after its `NotOnOrAfter` time. ssotrace checks the assertion's `Conditions` and each bearer `SubjectConfirmationData` `NotOnOrAfter`, against the time the browser sent the Response (from the HAR, so from the user's clock). If the assertion is outside the window by less than the clock-skew tolerance (default 3 minutes, set with `--clock-skew`), the finding is a WARN: the SP probably accepts it today, but only just. When the assertion's `IssueInstant` is later than the time the browser sent it, ssotrace reports the minimum clock difference, since an assertion cannot be issued after it was delivered. An unreadable timestamp is a WARN.
+The browser delivered the assertion before its `NotBefore` time or after its `NotOnOrAfter` time. ssotrace checks the assertion's `Conditions` and each bearer `SubjectConfirmationData` `NotOnOrAfter`, against the time the browser sent the Response (from the HAR, so from the user's clock). If the assertion is outside the window by less than the clock-skew tolerance (default 3 minutes, set with `--clock-skew`), the finding is a WARN: the SP probably accepts it today, but only just. When the assertion's `IssueInstant` is later than the time the browser sent it, ssotrace reports the minimum clock difference, since an assertion cannot be issued after it was delivered. An unreadable timestamp is a WARN. An assertion whose own timestamps contradict each other (it expires at or before its `IssueInstant` or `NotBefore`) is also a WARN: its validity window is empty, so only clock-skew tolerance lets an SP accept it.
 
 Common causes:
 - The IdP's or SP's clock is wrong (no NTP).
@@ -160,6 +186,7 @@ Severity: FAIL
 
 What it means:
 A signature on the AuthnRequest, Response, or assertion does not verify against the certificate embedded in it: the content changed after signing, or it was signed with a different key. A signature that does verify proves only that the content is unchanged (integrity), not that the signer is the IdP you expect (trust). Certificate expiry is reported separately and does not cause this finding.
+A signature that does not embed its certificate is reported as INFO ("could not be checked"), not FAIL: some IdPs leave the certificate out on purpose because the SP already has it.
 
 Common causes:
 - A proxy, WAF, or browser extension rewrote the message.
@@ -218,6 +245,19 @@ Common causes:
 
 How to fix:
 Make the IdP's NameID format match the SP's request, or have the SP request the format the IdP sends (or `unspecified`).
+
+### SAML013 — Signed by a different certificate than the one you trust
+Severity: FAIL (INFO without `--idp-cert`)
+
+What it means:
+With `--idp-cert`, ssotrace compares the SHA-256 fingerprint of every signing certificate in the capture with the certificates you supplied. A mismatch means the message was signed by a certificate you did not say you trust. Without `--idp-cert`, the finding is INFO and says that signatures were checked for integrity only: a valid signature proves the content was not altered, not who signed it.
+
+Common causes:
+- The IdP rolled over to a new signing certificate and the SP still has the old one.
+- Less often, the message did not come from your IdP.
+
+How to fix:
+Get the IdP's current signing certificate from its metadata or admin console, not from the capture. If the signer is the IdP's new certificate, update the SP. During a rollover, pass a PEM file containing both the old and new certificate. If the IdP does not recognize the certificate, treat the message as forged.
 
 ### SAML014 — Response contains more than one assertion
 Severity: WARN

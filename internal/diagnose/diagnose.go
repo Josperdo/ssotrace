@@ -3,6 +3,7 @@
 package diagnose
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -91,6 +92,13 @@ type Context struct {
 	// SAML is every SAML message in the capture, decoded and paired into
 	// flows. Rules must tolerate nil.
 	SAML *flow.SAMLTrace
+	// IDPCerts are the IdP signing certificates the user trusts
+	// (--idp-cert). Empty means signatures prove integrity only: nobody
+	// has said which signer to expect.
+	IDPCerts []*x509.Certificate
+	// SPEntityID is the SP's entity ID if the user supplied it
+	// (--sp-entity-id). It wins over anything inferred from the capture.
+	SPEntityID string
 	// ClockSkew is how far apart the IdP's and the SP's clocks may be
 	// before a time check fails. SPs allow some leeway because no two
 	// servers agree to the second; zero means strict.
@@ -148,6 +156,8 @@ func DefaultRules() (*Registry, error) {
 	for _, r := range []Rule{
 		noSSOTraffic{},
 		missingRequestBodies{},
+		redirectLoop{},
+		idpErrorCodes{},
 		statusNotSuccess{},
 		audienceMismatch{},
 		destinationMismatch{},
@@ -160,6 +170,7 @@ func DefaultRules() (*Registry, error) {
 		weakAlgorithm{},
 		encryptedAssertion{},
 		nameIDProblems{},
+		signerMismatch{},
 		multipleAssertions{},
 	} {
 		if err := reg.Register(r); err != nil {

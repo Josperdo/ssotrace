@@ -28,7 +28,7 @@ The result is a single static binary with no runtime dependencies.
 
 ```
 ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
-                  [--clock-skew DURATION]
+                  [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
 ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
 ssotrace scan     <file.har> [--max-size SIZE]
 ssotrace version
@@ -38,6 +38,8 @@ ssotrace help
 HAR files larger than 256 MiB are refused by default. Raise the limit with `--max-size`, for example `--max-size 1GiB`.
 
 Time checks allow 3 minutes of clock difference between the identity provider and the service provider, a common SP default. Match your SP with `--clock-skew`, for example `--clock-skew 5m`, or use `--clock-skew 0` for a strict check.
+
+By default a valid signature proves only that a message was not altered after signing. To check who signed it, pass the IdP's signing certificate with `--idp-cert idp.pem`, taken from the IdP's metadata or admin console. A PEM file with several certificates is accepted, for rollovers. For IdP-initiated logins, where the capture has no request to learn the SP from, pass `--sp-entity-id` so the audience can be checked.
 
 Exit codes: `0` no failures found, `1` at least one failure found, `2` usage or input error.
 

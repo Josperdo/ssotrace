@@ -55,11 +55,15 @@ func where(m *flow.SAMLMessage) string {
 // capture, and says how it knows. The Response itself cannot be trusted to
 // say: its Audience is exactly what SAML002 needs to check.
 //
-// The best source is the Issuer of the AuthnRequest this Response answers.
+// What the user says (--sp-entity-id) comes first. Otherwise the best
+// source is the Issuer of the AuthnRequest this Response answers.
 // For a Response without one (IdP-initiated, or the request was not
 // captured), any AuthnRequest in the capture that asked for delivery to the
 // same ACS URL came from the same SP.
 func spEntityID(ctx Context, v responseView) (id, source string) {
+	if ctx.SPEntityID != "" {
+		return ctx.SPEntityID, "--sp-entity-id"
+	}
 	if r := v.request(); r != nil && r.Issuer != "" {
 		return r.Issuer, "Issuer of the AuthnRequest this Response answers"
 	}

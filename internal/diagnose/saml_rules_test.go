@@ -280,3 +280,73 @@ func TestSAMLRulesQuietWithoutSAML(t *testing.T) {
 		}
 	}
 }
+
+func TestSAML013SignerMismatch(t *testing.T) {
+	other := testutil.NewKeyPair(t, "new-idp-key.example.com")
+	withTrusted := func(ctx Context, kps ...*testutil.KeyPair) Context {
+		for _, kp := range kps {
+			ctx.IDPCerts = append(ctx.IDPCerts, kp.Cert)
+		}
+		return ctx
+	}
+
+	tests := []struct {
+		name     string
+		ctx      Context
+		wantSev  Severity
+		wantText string
+	}{
+		{"no trusted cert supplied", samlCtx(t, normal), Info, "anyone can sign"},
+		{"signer matches", withTrusted(samlCtx(t, normal), testIDP(t)), Pass, ""},
+		{"rolled over to a new key", withTrusted(samlCtx(t, login{idp: other}), testIDP(t)), Fail, "new-idp-key.example.com"},
+		{"old and new both trusted during rollover", withTrusted(samlCtx(t, login{idp: other}), testIDP(t), other), Pass, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := only(t, signerMismatch{}, tt.ctx)
+			if f.Severity != tt.wantSev {
+				t.Errorf("severity = %v, want %v\n%+v", f.Severity, tt.wantSev, f)
+			}
+			if tt.wantText != "" && !findingMentions(f, tt.wantText) {
+				t.Errorf("finding does not mention %q:\n%+v", tt.wantText, f)
+			}
+		})
+	}
+
+	unsignedCtx := samlCtx(t, login{resp: func(o *testutil.ResponseOptions) { o.SignAssertion = false }})
+	if got := (signerMismatch{}).Check(unsignedCtx); got != nil {
+		t.Errorf("no signatures: got %+v, want nothing", got)
+	}
+}
+
+// TestSAML008NoEmbeddedCert: a signature without its certificate is
+// unchecked, not invalid.
+func TestSAML008NoEmbeddedCert(t *testing.T) {
+	strip := func(b []byte) []byte {
+		start := bytes.Index(b, []byte("<ds:KeyInfo>"))
+		end := bytes.Index(b, []byte("</ds:KeyInfo>"))
+		if start < 0 || end < 0 {
+			t.Fatal("fixture has no KeyInfo")
+		}
+		return append(append([]byte{}, b[:start]...), b[end+len("</ds:KeyInfo>"):]...)
+	}
+	f := only(t, invalidSignature{}, samlCtx(t, login{mutate: strip}))
+	if f.Severity != Info || !strings.Contains(f.Title, "could not be checked") {
+		t.Errorf("finding = %+v", f)
+	}
+}
+
+// TestSAML002SPEntityIDFlag: --sp-entity-id lets IdP-initiated logins be
+// checked, and overrides what the capture suggests.
+func TestSAML002SPEntityIDFlag(t *testing.T) {
+	ctx := samlCtx(t, login{noRequest: true})
+	ctx.SPEntityID = "https://app.example.org/saml/metadata"
+	if f := only(t, audienceMismatch{}, ctx); f.Severity != Pass {
+		t.Errorf("matching flag: %+v", f)
+	}
+	ctx.SPEntityID = "urn:example:expected-sp"
+	f := only(t, audienceMismatch{}, ctx)
+	if f.Severity != Fail || evidence(f, "SP entity ID from") != "--sp-entity-id" {
+		t.Errorf("mismatching flag: %+v", f)
+	}
+}
