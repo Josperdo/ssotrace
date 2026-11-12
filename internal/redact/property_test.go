@@ -88,7 +88,7 @@ func verdicts(h *har.HAR) []string {
 	return out
 }
 
-// TestRedactionPreservesDiagnosis is M6's central promise: a redacted file
+// TestRedactionPreservesDiagnosis is redaction's central promise: a redacted file
 // gives the same diagnosis as the original, and holds no secrets.
 func TestRedactionPreservesDiagnosis(t *testing.T) {
 	idp := testutil.NewKeyPair(t, "idp.example.com")
