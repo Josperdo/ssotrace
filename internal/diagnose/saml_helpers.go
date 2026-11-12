@@ -13,9 +13,10 @@ import (
 // responseView is one decoded SAML Response together with the flow it
 // belongs to, which is what most SAML rules iterate over.
 type responseView struct {
-	Flow *flow.SAMLFlow
-	Msg  *flow.SAMLMessage
-	Resp *saml.Response
+	Index int // position in ctx.SAML.Flows
+	Flow  *flow.SAMLFlow
+	Msg   *flow.SAMLMessage
+	Resp  *saml.Response
 }
 
 // samlResponses returns every decoded Response in capture order. Rules that
@@ -31,10 +32,16 @@ func samlResponses(ctx Context) []responseView {
 		if f.Response == nil || f.Response.Message == nil || f.Response.Message.Response == nil {
 			continue
 		}
-		out = append(out, responseView{Flow: f, Msg: f.Response, Resp: f.Response.Message.Response})
+		out = append(out, responseView{Index: i, Flow: f, Msg: f.Response, Resp: f.Response.Message.Response})
 	}
 	return out
 }
+
+// flowRef returns the Finding.Flow value for this view.
+func (v responseView) flowRef() *int { return flowRef(v.Index) }
+
+// flowRef returns a pointer to a copy of i, for Finding.Flow.
+func flowRef(i int) *int { return &i }
 
 // request returns the AuthnRequest this view's Response answers, if the
 // capture has it.

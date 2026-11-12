@@ -11,6 +11,7 @@ import (
 
 // signedPart is one element that can carry a signature.
 type signedPart struct {
+	flow  int    // index into ctx.SAML.Flows
 	label string // "Response", "Assertion 1", "AuthnRequest"
 	msg   *flow.SAMLMessage
 	sig   saml.Signature
@@ -24,13 +25,13 @@ func signedParts(ctx Context) []signedPart {
 	for i := range ctx.SAML.Flows {
 		f := &ctx.SAML.Flows[i]
 		if r := f.Request; r != nil && r.Message != nil && r.Message.AuthnRequest != nil {
-			out = append(out, signedPart{"AuthnRequest", r, r.Message.AuthnRequest.Signature})
+			out = append(out, signedPart{i, "AuthnRequest", r, r.Message.AuthnRequest.Signature})
 		}
 	}
 	for _, v := range samlResponses(ctx) {
-		out = append(out, signedPart{"Response", v.Msg, v.Resp.Signature})
+		out = append(out, signedPart{v.Index, "Response", v.Msg, v.Resp.Signature})
 		for i, a := range v.Resp.Assertions {
-			out = append(out, signedPart{fmt.Sprintf("Assertion %d", i+1), v.Msg, a.Signature})
+			out = append(out, signedPart{v.Index, fmt.Sprintf("Assertion %d", i+1), v.Msg, a.Signature})
 		}
 	}
 	return out
@@ -54,6 +55,7 @@ func (unsigned) Check(ctx Context) []Finding {
 			}
 			out = append(out, Finding{
 				RuleID:   "SAML007",
+				Flow:     v.flowRef(),
 				Severity: Fail,
 				Title:    "Assertion is not signed",
 				Detail: "Neither the Response nor the assertion carries a signature, so nothing proves the IdP wrote it. " +
@@ -95,6 +97,7 @@ func (invalidSignature) Check(ctx Context) []Finding {
 		if p.sig.Error == saml.ErrNoEmbeddedCert {
 			out = append(out, Finding{
 				RuleID:   "SAML008",
+				Flow:     flowRef(p.flow),
 				Severity: Info,
 				Title:    p.label + " signature could not be checked",
 				Detail: "The " + p.label + " is signed, but the signature does not include the signing certificate. " +
@@ -106,13 +109,14 @@ func (invalidSignature) Check(ctx Context) []Finding {
 		}
 		f := Finding{
 			RuleID:   "SAML008",
+			Flow:     flowRef(p.flow),
 			Severity: Fail,
 			Title:    p.label + " signature is invalid",
 			Detail: "The " + p.label + " carries a signature, but it does not verify against the certificate embedded in it. " +
 				"The SP will reject the message.",
 			Fix: "Common causes: something between the IdP and the browser rewrote the message (a proxy, a WAF, or a browser extension); " +
 				"the message was edited by hand or by a HAR sanitizer; or the IdP signed with a different key than the certificate it embeds. " +
-				"Capture again directly from the browser. If it still fails, compare the IdP's current signing certificate with the one below.",
+				"Capture again directly from the browser. If it still fails, compare the IdP's current signing certificate with the one in the evidence.",
 			Evidence: []Evidence{
 				{Label: p.label, Value: where(p.msg)},
 				{Label: "Validator says", Value: orNone(p.sig.Error)},
@@ -172,6 +176,7 @@ func (weakAlgorithm) Check(ctx Context) []Finding {
 		}
 		out = append(out, Finding{
 			RuleID:   "SAML010",
+			Flow:     flowRef(p.flow),
 			Severity: Warn,
 			Title:    p.label + " uses a weak signature algorithm",
 			Detail: "The " + p.label + " is signed with SHA-1 or MD5. These are no longer considered secure, " +

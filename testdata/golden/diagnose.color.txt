@@ -1,0 +1,41 @@
+[1mssotrace · login.har[0m
+[2m4 SAML logins[0m
+
+[1mCapture[0m
+  [1;33m![0m [1;33mWARN [0m [2mHAR004[0m  IdP error code found
+          [2mAADSTS50011[0m  Microsoft Entra ID, entry 4: GET https://login.example.com/cb (URL)
+          [1m→ [0mLook up the code in the identity provider's documentation.
+  [36mi[0m [36mINFO [0m [2mSAML013[0m  Signer not checked against a trusted certificate
+          [1m→ [0mTo check who signed, run again with --idp-cert.
+
+[1mLogin 1 · SP-initiated · app.example.org · 2026-01-15 10:00:00 UTC[0m
+  [1;31m✗[0m [1;31mFAIL [0m [2mSAML002[0m  Assertion audience does not match the SP
+          The IdP addressed this assertion to a different SP (Audience) than the
+          one that requested the login. The SP will reject it.
+          [2mResponse[0m            entry 3: POST https://app.example.org/saml/acs
+          [2mAssertion audience[0m  evil�]0;pwned��txt.exe [click](https://evil.example)
+          [2mSP entity ID[0m        https://app.example.org/saml/metadata
+          [1m→ [0mIn the IdP's settings for this application, set the Audience to
+            exactly the SP entity ID in the evidence. Watch for http vs https,
+            trailing slashes, and an old or staging value.
+  [1;33m![0m [1;33mWARN [0m [2mSAML010[0m  Response uses a weak signature algorithm
+          [2mSignature algorithm[0m  RSA-SHA1
+          [1m→ [0mChange the signature algorithm to RSA-SHA256.
+
+[1mLogin 2 · IdP-initiated · app.example.org · 2026-01-15 10:01:00 UTC[0m
+  [36mi[0m [36mINFO [0m [2mSAML005[0m  IdP-initiated login
+          [1m→ [0mIf the SP rejects it, allow IdP-initiated SSO in the SP or start the
+            login from the application.
+
+[1mLogin 3 · no response · app.example.org · 2026-01-15 10:02:00 UTC[0m
+  [1;31m✗[0m [1;31mFAIL [0m [2mSAML005[0m  IdP rejected the login request
+          The IdP answered the SP's AuthnRequest with an HTTP error and never
+          sent a Response back.
+          [2mAuthnRequest[0m     entry 7: GET https://idp.example.com/saml/sso
+          [2mIdP HTTP status[0m  400
+          [1m→ [0mCheck the IdP's logs at this time.
+
+[1mLogin 4 · SP-initiated · app.example.org · 2026-01-15 10:03:00 UTC[0m
+  [32m✓[0m no problems found
+
+Result: [1;31m2 failures · 2 warnings · 2 notes · 2 checks passed[0m

@@ -117,6 +117,7 @@ func (statusNotSuccess) Check(ctx Context) []Finding {
 
 		f := Finding{
 			RuleID:   "SAML001",
+			Flow:     v.flowRef(),
 			Severity: Fail,
 			Title:    "IdP returned an error instead of a login",
 			Detail:   meaning,

@@ -28,11 +28,12 @@ func (correlation) Check(ctx Context) []Finding {
 			paired++
 
 		case f.Request != nil:
-			out = append(out, unansweredRequest(f.Request.HTTPStatus, where(f.Request)))
+			out = append(out, unansweredRequest(i, f.Request.HTTPStatus, where(f.Request)))
 
 		case f.IDPInitiated:
 			out = append(out, Finding{
 				RuleID:   "SAML005",
+				Flow:     flowRef(i),
 				Severity: Info,
 				Title:    "IdP-initiated login",
 				Detail: "This Response does not answer an AuthnRequest: the login started at the IdP (for example from an app portal or dashboard), not at the SP. " +
@@ -46,6 +47,7 @@ func (correlation) Check(ctx Context) []Finding {
 		case f.UnmatchedInResponseTo:
 			out = append(out, Finding{
 				RuleID:   "SAML005",
+				Flow:     flowRef(i),
 				Severity: Warn,
 				Title:    "Response answers a request that is not in the capture",
 				Detail: "The Response's InResponseTo names an AuthnRequest that does not appear in this HAR. " +
@@ -70,7 +72,7 @@ func (correlation) Check(ctx Context) []Finding {
 // unansweredRequest reports an AuthnRequest that never got a Response. The
 // IdP's HTTP status separates "the IdP rejected the request outright" (a
 // configuration problem) from "the user never finished signing in".
-func unansweredRequest(status int, loc string) Finding {
+func unansweredRequest(flowIdx, status int, loc string) Finding {
 	ev := []Evidence{
 		{Label: "AuthnRequest", Value: loc},
 		{Label: "IdP HTTP status", Value: statusText(status)},
@@ -78,6 +80,7 @@ func unansweredRequest(status int, loc string) Finding {
 	if status >= 400 {
 		return Finding{
 			RuleID:   "SAML005",
+			Flow:     flowRef(flowIdx),
 			Severity: Fail,
 			Title:    "IdP rejected the login request",
 			Detail: "The IdP answered the SP's AuthnRequest with an HTTP error and never sent a Response back. " +
@@ -89,6 +92,7 @@ func unansweredRequest(status int, loc string) Finding {
 	}
 	return Finding{
 		RuleID:   "SAML005",
+		Flow:     flowRef(flowIdx),
 		Severity: Warn,
 		Title:    "Login request was never answered",
 		Detail: "The SP sent an AuthnRequest, but no SAML Response came back in this capture. " +

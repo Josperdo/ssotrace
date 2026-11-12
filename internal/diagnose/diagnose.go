@@ -72,7 +72,10 @@ type Evidence struct {
 
 // Finding is the result of one rule check.
 type Finding struct {
-	RuleID   string     `json:"rule_id"` // e.g. "SAML002"
+	RuleID string `json:"rule_id"` // e.g. "SAML002"
+	// Flow is the index into the SAML trace's flows (saml.flows in JSON)
+	// that this finding is about, or nil for capture-wide findings.
+	Flow     *int       `json:"flow,omitempty"`
 	Severity Severity   `json:"severity"`
 	Title    string     `json:"title"`
 	Detail   string     `json:"detail"`

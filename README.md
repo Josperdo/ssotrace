@@ -41,6 +41,8 @@ Time checks allow 3 minutes of clock difference between the identity provider an
 
 By default a valid signature proves only that a message was not altered after signing. To check who signed it, pass the IdP's signing certificate with `--idp-cert idp.pem`, taken from the IdP's metadata or admin console. A PEM file with several certificates is accepted, for rollovers. For IdP-initiated logins, where the capture has no request to learn the SP from, pass `--sp-entity-id` so the audience can be checked.
 
+Output is plain text for people by default, grouped by login attempt with problems first. Use `--format markdown` to paste into a ticket, or `--format json` for scripts (it carries `"schema_version": 1` and every check, including passes). Colors are used only on a terminal; `--no-color` or `NO_COLOR=1` turns them off.
+
 Exit codes: `0` no failures found, `1` at least one failure found, `2` usage or input error.
 
 ssotrace works offline. It makes no network requests unless you pass a flag that explicitly says it will, and it sends no telemetry.

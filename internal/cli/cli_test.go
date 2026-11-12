@@ -98,8 +98,14 @@ func TestRun(t *testing.T) {
 		{
 			name:       "diagnose flags on both sides of file",
 			args:       []string{"diagnose", "--no-color", validHAR, "--format=markdown"},
-			wantCode:   ExitUsage,
-			wantStderr: "diagnose --format markdown: not implemented yet",
+			wantCode:   ExitFail,
+			wantStdout: "## ssotrace report: valid.har",
+		},
+		{
+			name:       "diagnose text is the default",
+			args:       []string{"diagnose", validHAR},
+			wantCode:   ExitFail,
+			wantStdout: "Result: 1 failure",
 		},
 		{
 			name:       "diagnose clock skew accepted",
@@ -338,5 +344,72 @@ func TestDiagnoseJSONSAMLFlow(t *testing.T) {
 	as := f.Response.Message.Response.Assertions
 	if len(as) != 1 || !as[0].Verified || as[0].Subject.NameID.Value != "alice@example.com" {
 		t.Errorf("assertions = %+v", as)
+	}
+}
+
+// TestDiagnoseExitCodes runs the real pipeline on generated SAML logins in
+// every output format: a clean login exits 0, a broken one exits 1, and
+// the format never changes the exit code.
+func TestDiagnoseExitCodes(t *testing.T) {
+	dir := t.TempDir()
+	good := testutil.NewSAMLLogin(t, testutil.DefaultAuthnRequestOptions(), testutil.DefaultResponseOptions())
+	badResp := testutil.DefaultResponseOptions()
+	badResp.SignAssertion = false // SAML007 FAIL
+	bad := testutil.NewSAMLLogin(t, testutil.DefaultAuthnRequestOptions(), badResp)
+
+	goodPath := writeFile(t, dir, "good.har", string(testutil.MarshalHAR(t, good.HAR)))
+	badPath := writeFile(t, dir, "bad.har", string(testutil.MarshalHAR(t, bad.HAR)))
+
+	for _, format := range []string{"text", "json", "markdown"} {
+		for _, tc := range []struct {
+			path string
+			want int
+		}{{goodPath, ExitOK}, {badPath, ExitFail}} {
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"diagnose", tc.path, "--format", format}, &stdout, &stderr, BuildInfo{Version: "test"})
+			if code != tc.want {
+				t.Errorf("%s %s: exit %d, want %d (stderr %q)", format, filepath.Base(tc.path), code, tc.want, stderr.String())
+			}
+			if stdout.Len() == 0 {
+				t.Errorf("%s %s: no output", format, filepath.Base(tc.path))
+			}
+		}
+	}
+}
+
+func TestUseColor(t *testing.T) {
+	// A buffer is never a terminal, whatever the settings.
+	var buf bytes.Buffer
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	if useColor(false, &buf) {
+		t.Error("color enabled for a non-terminal writer")
+	}
+
+	// A regular file is not a terminal either: output redirected to a
+	// file must stay free of escape codes.
+	f, err := os.Create(filepath.Join(t.TempDir(), "out.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if useColor(false, f) {
+		t.Error("color enabled for a regular file")
+	}
+
+	// The opt-outs win before the terminal check is even made.
+	for _, tc := range []struct {
+		name, noColor, term string
+		flag                bool
+	}{
+		{"--no-color", "", "xterm", true},
+		{"NO_COLOR set", "1", "xterm", false},
+		{"TERM=dumb", "", "dumb", false},
+	} {
+		t.Setenv("NO_COLOR", tc.noColor)
+		t.Setenv("TERM", tc.term)
+		if useColor(tc.flag, os.Stdout) {
+			t.Errorf("%s: color enabled", tc.name)
+		}
 	}
 }

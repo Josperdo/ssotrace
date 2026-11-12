@@ -70,12 +70,13 @@ func (signerMismatch) Check(ctx Context) []Finding {
 		c := s.part.sig.Certificate
 		out = append(out, Finding{
 			RuleID:   "SAML013",
+			Flow:     flowRef(s.part.flow),
 			Severity: Fail,
 			Title:    "Signed by a different certificate than the one you trust",
 			Detail: "The message was signed with a certificate that does not match the one supplied with --idp-cert. " +
 				"Most often the IdP rolled over to a new signing certificate and the SP still has the old one. " +
 				"Less often, the message did not come from your IdP at all.",
-			Fix: "Compare the certificate below with the IdP's current signing certificate. If it is the IdP's new certificate, " +
+			Fix: "Compare the signing certificate in the evidence with the IdP's current signing certificate. If it is the IdP's new certificate, " +
 				"update the SP (upload the new certificate or refresh the IdP metadata). If the IdP does not recognize it, treat the message as forged.",
 			Evidence: []Evidence{
 				{Label: "Signed element", Value: s.part.label + ", " + where(s.part.msg)},

@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,6 +49,9 @@ Usage:
   ssotrace help
 
 Options:
+  --format FORMAT          text (default), json for scripts, or markdown for tickets
+  --no-color               plain text output; colors are only used on a terminal,
+                           and NO_COLOR=1 also turns them off
   --max-size SIZE          largest HAR file to read, e.g. 512MiB or 1GiB (default 256MiB)
   --clock-skew DURATION    how far apart IdP and SP clocks may be before a time
                            check fails, e.g. 90s or 5m (default 3m)
@@ -79,7 +83,7 @@ func Run(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 		_, _ = fmt.Fprintf(stdout, "ssotrace %s (commit %s, built %s)\n", info.Version, info.Commit, info.Date)
 		return ExitOK
 	case "diagnose":
-		return runDiagnose(rest, stdout, stderr)
+		return runDiagnose(rest, stdout, stderr, info)
 	case "redact":
 		return runRedact(rest, stdout, stderr)
 	case "scan":
@@ -89,10 +93,10 @@ func Run(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	}
 }
 
-func runDiagnose(args []string, stdout, stderr io.Writer) int {
+func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	fs := newFlagSet("diagnose")
 	format := fs.String("format", "text", "output format: text, json, or markdown")
-	_ = fs.Bool("no-color", false, "disable colored output")
+	noColor := fs.Bool("no-color", false, "disable colored output")
 	skew := fs.Duration("clock-skew", diagnose.DefaultClockSkew, "how far apart IdP and SP clocks may be, e.g. 90s or 5m")
 	idpCert := fs.String("idp-cert", "", "PEM file with the IdP signing certificate(s) you trust")
 	spEntityID := fs.String("sp-entity-id", "", "the SP's entity ID, for checking IdP-initiated logins")
@@ -127,10 +131,6 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		return ExitUsage
 	}
-	if *format != "json" {
-		return notImplemented(stderr, "diagnose --format "+*format)
-	}
-
 	reg, err := diagnose.DefaultRules()
 	if err != nil {
 		// A broken built-in registry is a programming error, not bad input;
@@ -146,7 +146,21 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 		SPEntityID: strings.TrimSpace(*spEntityID),
 	}
 	findings := diagnose.Run(ctx, reg)
-	if err := report.JSON(stdout, findings, ctx.SAML); err != nil {
+	rep := &report.Report{
+		File:     filepath.Base(pos[0]),
+		Version:  info.Version,
+		Findings: findings,
+		SAML:     ctx.SAML,
+	}
+	switch *format {
+	case "json":
+		err = report.JSON(stdout, rep)
+	case "markdown":
+		err = report.Markdown(stdout, rep)
+	default:
+		err = report.Text(stdout, rep, report.TextOptions{Color: useColor(*noColor, stdout)})
+	}
+	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
 		return ExitUsage
 	}
@@ -305,4 +319,22 @@ func notImplemented(stderr io.Writer, cmd string) int {
 
 func writeUsage(w io.Writer) {
 	_, _ = io.WriteString(w, usageText)
+}
+
+// useColor decides whether text output gets ANSI colors. Color is for
+// people, so it is off whenever output is not a terminal (a pipe, a file,
+// CI logs), and whenever the user opts out with --no-color, the NO_COLOR
+// convention (https://no-color.org: any non-empty value), or TERM=dumb.
+func useColor(noColor bool, w io.Writer) bool {
+	if noColor || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	// Only a real *os.File can be a terminal; tests pass buffers.
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	// A character device is a terminal; a pipe or regular file is not.
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }

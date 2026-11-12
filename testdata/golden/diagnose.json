@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "ssotrace_version": "v0.0.0-test",
+  "file": "login.har",
+  "summary": {
+    "fail": 2,
+    "warn": 2,
+    "info": 2,
+    "pass": 2
+  },
+  "findings": [
+    {
+      "rule_id": "HAR001",
+      "severity": "pass",
+      "title": "SSO traffic found",
+      "detail": ""
+    },
+    {
+      "rule_id": "HAR004",
+      "severity": "warn",
+      "title": "IdP error code found",
+      "detail": "The capture contains 1 error code from the identity provider.",
+      "evidence": [
+        {
+          "label": "AADSTS50011",
+          "value": "Microsoft Entra ID, entry 4: GET https://login.example.com/cb (URL)"
+        }
+      ],
+      "fix": "Look up the code in the identity provider's documentation."
+    },
+    {
+      "rule_id": "SAML001",
+      "severity": "pass",
+      "title": "IdP reported success",
+      "detail": ""
+    },
+    {
+      "rule_id": "SAML002",
+      "flow": 0,
+      "severity": "fail",
+      "title": "Assertion audience does not match the SP",
+      "detail": "The IdP addressed this assertion to a different SP (Audience) than the one that requested the login. The SP will reject it.",
+      "evidence": [
+        {
+          "label": "Response",
+          "value": "entry 3: POST https://app.example.org/saml/acs"
+        },
+        {
+          "label": "Assertion audience",
+          "value": "evil\u001b]0;pwned\u0007‮txt.exe [click](https://evil.example)"
+        },
+        {
+          "label": "SP entity ID",
+          "value": "https://app.example.org/saml/metadata"
+        }
+      ],
+      "fix": "In the IdP's settings for this application, set the Audience to exactly the SP entity ID in the evidence. Watch for http vs https, trailing slashes, and an old or staging value."
+    },
+    {
+      "rule_id": "SAML005",
+      "flow": 1,
+      "severity": "info",
+      "title": "IdP-initiated login",
+      "detail": "",
+      "fix": "If the SP rejects it, allow IdP-initiated SSO in the SP or start the login from the application."
+    },
+    {
+      "rule_id": "SAML005",
+      "flow": 2,
+      "severity": "fail",
+      "title": "IdP rejected the login request",
+      "detail": "The IdP answered the SP's AuthnRequest with an HTTP error and never sent a Response back.",
+      "evidence": [
+        {
+          "label": "AuthnRequest",
+          "value": "entry 7: GET https://idp.example.com/saml/sso"
+        },
+        {
+          "label": "IdP HTTP status",
+          "value": "400"
+        }
+      ],
+      "fix": "Check the IdP's logs at this time."
+    },
+    {
+      "rule_id": "SAML010",
+      "flow": 0,
+      "severity": "warn",
+      "title": "Response uses a weak signature algorithm",
+      "detail": "",
+      "evidence": [
+        {
+          "label": "Signature algorithm",
+          "value": "RSA-SHA1"
+        }
+      ],
+      "fix": "Change the signature algorithm to RSA-SHA256."
+    },
+    {
+      "rule_id": "SAML013",
+      "severity": "info",
+      "title": "Signer not checked against a trusted certificate",
+      "detail": "",
+      "fix": "To check who signed, run again with --idp-cert."
+    }
+  ],
+  "saml": {
+    "flows": [
+      {
+        "request": {
+          "entry": 1,
+          "time": "2026-01-15T10:00:00Z",
+          "method": "GET",
+          "url": "https://idp.example.com/saml/sso",
+          "http_status": 0,
+          "param": "",
+          "binding": "",
+          "message": {
+            "kind": "AuthnRequest",
+            "authn_request": {
+              "id": "",
+              "version": "",
+              "issue_instant": "",
+              "acs_url": "https://app.example.org/saml/acs",
+              "issuer": "",
+              "signature": {
+                "present": false,
+                "verified": false
+              }
+            }
+          }
+        },
+        "response": {
+          "entry": 3,
+          "time": "2026-01-15T10:00:01Z",
+          "method": "POST",
+          "url": "https://app.example.org/saml/acs",
+          "http_status": 0,
+          "param": "",
+          "binding": ""
+        },
+        "idp_initiated": false
+      },
+      {
+        "response": {
+          "entry": 5,
+          "time": "2026-01-15T10:01:00Z",
+          "method": "POST",
+          "url": "https://app.example.org/saml/acs",
+          "http_status": 0,
+          "param": "",
+          "binding": ""
+        },
+        "idp_initiated": true
+      },
+      {
+        "request": {
+          "entry": 7,
+          "time": "2026-01-15T10:02:00Z",
+          "method": "GET",
+          "url": "https://idp.example.com/saml/sso",
+          "http_status": 0,
+          "param": "",
+          "binding": "",
+          "message": {
+            "kind": "AuthnRequest",
+            "authn_request": {
+              "id": "",
+              "version": "",
+              "issue_instant": "",
+              "acs_url": "https://app.example.org/saml/acs",
+              "issuer": "",
+              "signature": {
+                "present": false,
+                "verified": false
+              }
+            }
+          }
+        },
+        "idp_initiated": false
+      },
+      {
+        "request": {
+          "entry": 9,
+          "time": "2026-01-15T10:03:00Z",
+          "method": "GET",
+          "url": "https://idp.example.com/saml/sso",
+          "http_status": 0,
+          "param": "",
+          "binding": "",
+          "message": {
+            "kind": "AuthnRequest",
+            "authn_request": {
+              "id": "",
+              "version": "",
+              "issue_instant": "",
+              "acs_url": "https://app.example.org/saml/acs",
+              "issuer": "",
+              "signature": {
+                "present": false,
+                "verified": false
+              }
+            }
+          }
+        },
+        "response": {
+          "entry": 11,
+          "time": "2026-01-15T10:03:01Z",
+          "method": "POST",
+          "url": "https://app.example.org/saml/acs",
+          "http_status": 0,
+          "param": "",
+          "binding": ""
+        },
+        "idp_initiated": false
+      }
+    ]
+  }
+}

@@ -28,12 +28,13 @@ func (destinationMismatch) Check(ctx Context) []Finding {
 		}
 		out = append(out, Finding{
 			RuleID:   "SAML003",
+			Flow:     v.flowRef(),
 			Severity: Fail,
 			Title:    "Response Destination does not match where it was sent",
 			Detail: "The IdP addressed the Response to one URL (Destination), but the browser posted it to another. " +
 				urlMismatchHint(v.Resp.Destination, v.Msg.URL),
 			Fix: "In the IdP's settings for this application, set the Assertion Consumer Service (ACS) or Reply URL to exactly " +
-				"the URL the browser posted to, shown below. If the SP sits behind a proxy, make sure it knows its public URL.",
+				"the URL the browser posted to (in the evidence). If the SP sits behind a proxy, make sure it knows its public URL.",
 			Evidence: []Evidence{
 				{Label: "Response", Value: where(v.Msg)},
 				{Label: "Destination in Response", Value: v.Resp.Destination},

@@ -36,6 +36,7 @@ func (validityWindow) Check(ctx Context) []Finding {
 			if bad != nil {
 				out = append(out, Finding{
 					RuleID:   "SAML006",
+					Flow:     v.flowRef(),
 					Severity: Warn,
 					Title:    "Assertion has an unreadable timestamp",
 					Detail:   "A validity time in the assertion is not a valid xs:dateTime, so SPs may reject the assertion or ignore the limit.",
@@ -167,7 +168,7 @@ func windowFinding(ctx Context, v responseView, a saml.Assertion, at time.Time, 
 	if sev == Warn {
 		fix = "The SP probably accepts this today because it allows some clock skew, but a stricter SP or more drift will break it. " + fix
 	}
-	return Finding{RuleID: "SAML006", Severity: sev, Title: title, Detail: detail, Fix: fix, Evidence: ev}
+	return Finding{RuleID: "SAML006", Flow: v.flowRef(), Severity: sev, Title: title, Detail: detail, Fix: fix, Evidence: ev}
 }
 
 // emptyWindow reports an assertion whose own timestamps contradict each
@@ -190,6 +191,7 @@ func emptyWindow(v responseView, a saml.Assertion, notBefore, notAfter *bound) (
 	}
 	return Finding{
 		RuleID:   "SAML006",
+		Flow:     v.flowRef(),
 		Severity: Warn,
 		Title:    "Assertion expires before it becomes valid",
 		Detail: fmt.Sprintf("The assertion's %s is not after its %s, so its validity window is empty. "+

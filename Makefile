@@ -13,7 +13,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dat
 
 LAB_COMPOSE := docker compose -f lab/docker-compose.yml --env-file lab/.env
 
-.PHONY: help build test lint vuln fmt tidy check hooks lab-up lab-down clean
+.PHONY: help build test golden lint vuln fmt tidy check hooks lab-up lab-down clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -24,6 +24,14 @@ build: ## Build a static binary to bin/ssotrace
 
 test: ## Run tests with the race detector
 	go test -race -count=1 ./...
+
+# -update is defined only by packages that have golden files; passing it to
+# ./... would fail every other test binary with "flag provided but not defined".
+GOLDEN_PKGS := ./internal/report
+
+golden: ## Rewrite golden files in testdata/golden (review the diff after)
+	go test -count=1 $(GOLDEN_PKGS) -update
+	git diff --stat -- testdata/golden
 
 lint: ## Run golangci-lint
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not found: brew install golangci-lint"; exit 1; }

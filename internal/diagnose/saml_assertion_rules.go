@@ -20,6 +20,7 @@ func (encryptedAssertion) Check(ctx Context) []Finding {
 		}
 		out = append(out, Finding{
 			RuleID:   "SAML011",
+			Flow:     v.flowRef(),
 			Severity: Info,
 			Title:    "Assertion is encrypted",
 			Detail: "The assertion is encrypted with the SP's public key, so only the SP can read it. " +
@@ -59,6 +60,7 @@ func (nameIDProblems) Check(ctx Context) []Finding {
 			if nid.Value == "" {
 				out = append(out, Finding{
 					RuleID:   "SAML012",
+					Flow:     v.flowRef(),
 					Severity: Warn,
 					Title:    "Assertion has no NameID",
 					Detail: "The assertion does not identify the user with a NameID. Most SPs use the NameID to find the account, " +
@@ -73,6 +75,7 @@ func (nameIDProblems) Check(ctx Context) []Finding {
 			}
 			out = append(out, Finding{
 				RuleID:   "SAML012",
+				Flow:     v.flowRef(),
 				Severity: Fail,
 				Title:    "NameID format differs from what the SP requested",
 				Detail: fmt.Sprintf("The SP asked for a %s NameID, but the IdP sent a %s one. "+
@@ -118,6 +121,7 @@ func (multipleAssertions) Check(ctx Context) []Finding {
 		}
 		out = append(out, Finding{
 			RuleID:   "SAML014",
+			Flow:     v.flowRef(),
 			Severity: Warn,
 			Title:    "Response contains more than one assertion",
 			Detail: "Identity providers normally send exactly one assertion. Extra assertions are how XML signature wrapping attacks " +

@@ -28,12 +28,13 @@ func (audienceMismatch) Check(ctx Context) []Finding {
 			if spID == "" {
 				out = append(out, Finding{
 					RuleID:   "SAML002",
+					Flow:     v.flowRef(),
 					Severity: Info,
 					Title:    "Audience could not be checked",
 					Detail: "The capture contains no AuthnRequest from this SP, so ssotrace cannot tell which entity ID the SP expects. " +
 						"This is normal for IdP-initiated logins.",
 					Fix: "To check the audience, capture an SP-initiated login (start from the application's own sign-in page), " +
-						"or compare the audience below with the SP's entity ID by hand.",
+						"or compare the assertion audience in the evidence with the SP's entity ID by hand.",
 					Evidence: []Evidence{
 						{Label: "Response", Value: where(v.Msg)},
 						{Label: "Assertion audience", Value: strings.Join(auds, ", ")},
@@ -47,12 +48,13 @@ func (audienceMismatch) Check(ctx Context) []Finding {
 			}
 			f := Finding{
 				RuleID:   "SAML002",
+				Flow:     v.flowRef(),
 				Severity: Fail,
 				Title:    "Assertion audience does not match the SP",
 				Detail: "The IdP addressed this assertion to a different SP (Audience) than the one that requested the login. " +
 					"The SP will reject it.",
 				Fix: "In the IdP's settings for this application, set the Audience (also called Entity ID, Identifier, or Audience URI) " +
-					"to exactly the SP entity ID shown below. Watch for http vs https, trailing slashes, and an old or staging value.",
+					"to exactly the SP entity ID in the evidence. Watch for http vs https, trailing slashes, and an old or staging value.",
 				Evidence: []Evidence{
 					{Label: "Response", Value: where(v.Msg)},
 					{Label: "Assertion audience", Value: strings.Join(auds, ", ")},

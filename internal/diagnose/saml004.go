@@ -49,12 +49,13 @@ func (recipientMismatch) Check(ctx Context) []Finding {
 			}
 			out = append(out, Finding{
 				RuleID:   "SAML004",
+				Flow:     v.flowRef(),
 				Severity: Fail,
 				Title:    "Assertion Recipient does not match where it was sent",
 				Detail: "The assertion may only be delivered to the URL in its Recipient, but the browser posted it somewhere else. " +
 					urlMismatchHint(recipients[0], v.Msg.URL),
 				Fix: "In the IdP's settings for this application, set the Assertion Consumer Service (ACS) or Reply URL to exactly " +
-					"the URL the browser posted to, shown below.",
+					"the URL the browser posted to (in the evidence).",
 				Evidence: []Evidence{
 					{Label: "Response", Value: where(v.Msg)},
 					{Label: "Recipient in assertion", Value: strings.Join(recipients, ", ")},

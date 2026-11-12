@@ -51,6 +51,7 @@ func (certExpiry) Check(ctx Context) []Finding {
 		case saml.ValidityExpired:
 			out = append(out, Finding{
 				RuleID:   "SAML009",
+				Flow:     flowRef(p.flow),
 				Severity: Warn,
 				Title:    "IdP signing certificate had expired",
 				Detail: fmt.Sprintf("The certificate that signed this message expired %s before the message was sent. "+
@@ -63,6 +64,7 @@ func (certExpiry) Check(ctx Context) []Finding {
 		case saml.ValidityNotYetValid:
 			out = append(out, Finding{
 				RuleID:   "SAML009",
+				Flow:     flowRef(p.flow),
 				Severity: Warn,
 				Title:    "IdP signing certificate was not yet valid",
 				Detail: "The certificate that signed this message was not valid yet when the message was sent. " +
@@ -77,6 +79,7 @@ func (certExpiry) Check(ctx Context) []Finding {
 			}
 			out = append(out, Finding{
 				RuleID:   "SAML009",
+				Flow:     flowRef(p.flow),
 				Severity: Warn,
 				Title:    "IdP signing certificate expires soon",
 				Detail: fmt.Sprintf("The certificate that signed this message expires %s after the message was sent. "+

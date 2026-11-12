@@ -350,3 +350,38 @@ func TestSAML002SPEntityIDFlag(t *testing.T) {
 		t.Errorf("mismatching flag: %+v", f)
 	}
 }
+
+// TestFindingsPointAtTheirFlow: with two logins in one capture, a problem
+// in the second is attributed to flow 1, so reports group it correctly.
+func TestFindingsPointAtTheirFlow(t *testing.T) {
+	ctx := samlCtx(t, normal,
+		login{
+			req:  func(o *testutil.AuthnRequestOptions) { o.ID = "_second" },
+			resp: func(o *testutil.ResponseOptions) { o.InResponseTo = "_second"; o.Audience = "urn:example:other" },
+		},
+		login{noResponse: true, reqStatus: 400, req: func(o *testutil.AuthnRequestOptions) { o.ID = "_third" }},
+	)
+	reg, err := DefaultRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"SAML002": 1, "SAML005": 2}
+	for _, f := range Run(ctx, reg) {
+		idx, ok := want[f.RuleID]
+		if !ok || f.Severity == Pass {
+			continue
+		}
+		if f.Flow == nil || *f.Flow != idx {
+			t.Errorf("%s flow = %v, want %d", f.RuleID, f.Flow, idx)
+		}
+		delete(want, f.RuleID)
+	}
+	if len(want) != 0 {
+		t.Errorf("expected findings not produced: %v", want)
+	}
+	for _, f := range Run(ctx, reg) {
+		if strings.HasPrefix(f.RuleID, "HAR") && f.Flow != nil {
+			t.Errorf("%s is capture-wide but has flow %d", f.RuleID, *f.Flow)
+		}
+	}
+}
