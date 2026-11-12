@@ -35,7 +35,7 @@ Fixtures must be synthetic. No real HAR files, tokens, emails, or tenant IDs, ev
 
 ## Rule IDs
 
-Rules are identified as `HAR001`, `SAML001`, `OIDC001`, and so on.
+Rules are identified as `HAR001`, `SAML001`, and so on. The `OIDC` prefix is reserved and has no rules in this version.
 
 - IDs are stable and are **never reused**, even after a rule is removed.
 - Every rule has an entry in [`docs/rules.md`](docs/rules.md), using the template there.

@@ -138,7 +138,7 @@ func TestRun(t *testing.T) {
 			name:       "double dash makes dash-prefixed name a file",
 			args:       []string{"diagnose", "--", "-weird.har"},
 			wantCode:   ExitUsage,
-			wantStderr: "-weird.har: no such file",
+			wantStderr: "-weird.har: file not found",
 		},
 		{
 			name:       "diagnose -h prints usage to stdout",
@@ -150,7 +150,7 @@ func TestRun(t *testing.T) {
 			name:       "diagnose nonexistent file",
 			args:       []string{"diagnose", missingHAR},
 			wantCode:   ExitUsage,
-			wantStderr: "no such file",
+			wantStderr: "file not found",
 		},
 		{
 			name:       "diagnose malformed file",
@@ -222,7 +222,7 @@ func TestRun(t *testing.T) {
 			name:       "scan nonexistent file",
 			args:       []string{"scan", missingHAR},
 			wantCode:   ExitUsage,
-			wantStderr: "no such file",
+			wantStderr: "file not found",
 		},
 	}
 

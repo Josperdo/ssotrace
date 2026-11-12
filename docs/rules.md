@@ -8,7 +8,7 @@ Every finding ssotrace reports comes from a rule. This page lists every rule, wh
 |--------|--------|
 | `HAR`  | The capture itself: missing traffic, stripped bodies, redirect loops |
 | `SAML` | SAML 2.0 requests, responses, assertions, and signatures |
-| `OIDC` | OAuth 2.0 and OpenID Connect requests, callbacks, and tokens |
+| `OIDC` | OAuth 2.0 and OpenID Connect (no rules in this version) |
 
 IDs are stable. A rule keeps its ID for life, and a removed rule's ID is never reused, so scripts and saved reports that reference an ID keep meaning the same thing.
 

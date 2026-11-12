@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,6 +251,13 @@ func loadHAR(path string, maxBytes int64, stderr io.Writer) (*har.HAR, bool) {
 	h, err := har.Load(path, maxBytes)
 	if err == nil {
 		return h, true
+	}
+	// The OS words this differently ("no such file or directory" on Unix,
+	// "The system cannot find the file specified." on Windows); one message
+	// in ssotrace's own words reads the same everywhere.
+	if errors.Is(err, fs.ErrNotExist) {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: %s: file not found\n", path)
+		return nil, false
 	}
 	// har.Load errors already start with the path (or "open <path>").
 	_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)

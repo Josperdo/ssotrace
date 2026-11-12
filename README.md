@@ -9,7 +9,7 @@ Diagnose failed SSO logins from a HAR file, and redact it so it's safe to share.
 
 ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL, clock skew, rotated or expired certificates, missing or invalid signatures, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
 
-OAuth 2.0 and OpenID Connect traffic is recognized in captures but not diagnosed.
+**Scope:** ssotrace diagnoses **SAML 2.0** logins. For OAuth 2.0 and OpenID Connect logins it reports redirect loops and identity provider error codes, and `scan` and `redact` handle their tokens and codes, but it does not check the OAuth or OIDC messages themselves.
 
 ![ssotrace diagnosing a failed login, scanning the capture for secrets, and redacting it](docs/demo.gif)
 
