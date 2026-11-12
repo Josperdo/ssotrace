@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Josperdo/ssotrace/internal/testutil"
 )
@@ -181,20 +182,37 @@ func TestParseResponseSignatureStates(t *testing.T) {
 	}
 }
 
-// TestParseExpiredCertificate: certificate validity is judged at the
-// message's own time, so the same bytes verify at RefTime and fail years
-// later, deterministically.
-func TestParseExpiredCertificate(t *testing.T) {
-	idp := testutil.NewKeyPair(t, "idp.example.com")
+// TestCertificateValidity: validity is judged at the message's own time
+// and recorded separately from the cryptographic check, so an expired
+// certificate never masquerades as a tampered message.
+func TestCertificateValidity(t *testing.T) {
+	idp := testutil.NewKeyPair(t, "idp.example.com") // valid RefTime ±1 year
 	raw := testutil.Response(t, idp, testutil.DefaultResponseOptions())
 
-	m, err := Parse(raw, testutil.RefTime.AddDate(3, 0, 0))
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name string
+		at   time.Time
+		want string
+	}{
+		{"valid", testutil.RefTime, ValidityValid},
+		{"expired", testutil.RefTime.AddDate(3, 0, 0), ValidityExpired},
+		{"not yet valid", testutil.RefTime.AddDate(-3, 0, 0), ValidityNotYetValid},
+		{"no timestamp", time.Time{}, ValidityUnknown},
 	}
-	sig := m.Response.Assertions[0].Signature
-	if sig.Verified || !strings.Contains(sig.Error, "not valid at this time") {
-		t.Errorf("signature = %+v", sig)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := Parse(raw, tt.at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sig := m.Response.Assertions[0].Signature
+			if !sig.Verified {
+				t.Errorf("signature not verified: %q", sig.Error)
+			}
+			if got := sig.Certificate.ValidityAtCapture; got != tt.want {
+				t.Errorf("validity = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -26,10 +26,12 @@ const (
 
 	BindingPOST = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
 
+	NameIDEmail      = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+	NameIDPersistent = "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+
 	// SigAlgRSASHA256 is the SigAlg value for HTTP-Redirect signatures.
 	SigAlgRSASHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
 
-	nameIDEmail = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
 	cmBearerURI = "urn:oasis:names:tc:SAML:2.0:cm:bearer" //nolint:gosec // public SAML spec URI, not a credential
 	authnClass  = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
 )
@@ -41,20 +43,30 @@ const samlTime = "2006-01-02T15:04:05Z"
 // DefaultResponseOptions and change only the field a test cares about, so
 // each test reads as "a normal response, except ...".
 type ResponseOptions struct {
-	ID           string
-	AssertionID  string
-	InResponseTo string
-	IssueInstant time.Time
-	Issuer       string // IdP entity ID
-	Destination  string // SP's ACS URL; also used as the Recipient
-	Audience     string // SP entity ID the assertion is meant for
-	NameID       string
-	NotBefore    time.Time
-	NotOnOrAfter time.Time
-	StatusCode   string // a non-success status produces no assertion
+	ID            string
+	AssertionID   string
+	InResponseTo  string
+	IssueInstant  time.Time
+	Issuer        string // IdP entity ID
+	Destination   string // SP's ACS URL the IdP addressed the Response to
+	Recipient     string // where the bearer assertion may be delivered
+	Audience      string // SP entity ID the assertion is meant for
+	NameID        string
+	NotBefore     time.Time
+	NotOnOrAfter  time.Time
+	StatusCode    string // a non-success status produces no assertion
+	StatusSubCode string // optional second-level status code
+	StatusMessage string // optional human-readable status message
+	NameIDFormat  string
 
 	SignAssertion bool
 	SignResponse  bool
+	// SHA1 signs with RSA-SHA1 and a SHA-1 digest, as old IdPs still do.
+	SHA1 bool
+	// Encrypt replaces the Assertion with an EncryptedAssertion
+	// placeholder. It is not real encryption: ssotrace never decrypts, so
+	// only the element's presence matters to tests.
+	Encrypt bool
 }
 
 // DefaultResponseOptions returns a successful, assertion-signed response
@@ -67,8 +79,10 @@ func DefaultResponseOptions() ResponseOptions {
 		IssueInstant:  RefTime,
 		Issuer:        "https://idp.example.com/saml",
 		Destination:   "https://app.example.org/saml/acs",
+		Recipient:     "https://app.example.org/saml/acs",
 		Audience:      "https://app.example.org/saml/metadata",
 		NameID:        "alice@example.com",
+		NameIDFormat:  NameIDEmail,
 		NotBefore:     RefTime.Add(-1 * time.Minute),
 		NotOnOrAfter:  RefTime.Add(5 * time.Minute),
 		StatusCode:    StatusSuccess,
@@ -92,18 +106,31 @@ func Response(t testing.TB, kp *KeyPair, o ResponseOptions) []byte {
 		resp.CreateAttr("InResponseTo", o.InResponseTo)
 	}
 	resp.CreateElement("saml:Issuer").SetText(o.Issuer)
-	resp.CreateElement("samlp:Status").CreateElement("samlp:StatusCode").CreateAttr("Value", o.StatusCode)
+	status := resp.CreateElement("samlp:Status")
+	code := status.CreateElement("samlp:StatusCode")
+	code.CreateAttr("Value", o.StatusCode)
+	if o.StatusSubCode != "" {
+		code.CreateElement("samlp:StatusCode").CreateAttr("Value", o.StatusSubCode)
+	}
+	if o.StatusMessage != "" {
+		status.CreateElement("samlp:StatusMessage").SetText(o.StatusMessage)
+	}
 
 	// An IdP that refuses a login sends a Status and nothing else.
-	if o.StatusCode == StatusSuccess {
+	switch {
+	case o.StatusCode != StatusSuccess:
+	case o.Encrypt:
+		enc := resp.CreateElement("saml:EncryptedAssertion")
+		enc.CreateElement("xenc:EncryptedData").CreateAttr("xmlns:xenc", "http://www.w3.org/2001/04/xmlenc#")
+	default:
 		a := assertion(o)
 		if o.SignAssertion {
-			a = sign(t, kp, a)
+			a = sign(t, kp, a, o.SHA1)
 		}
 		resp.AddChild(a)
 	}
 	if o.SignResponse {
-		resp = sign(t, kp, resp)
+		resp = sign(t, kp, resp, o.SHA1)
 	}
 
 	doc := etree.NewDocument()
@@ -127,7 +154,9 @@ func assertion(o ResponseOptions) *etree.Element {
 
 	subj := a.CreateElement("saml:Subject")
 	nameID := subj.CreateElement("saml:NameID")
-	nameID.CreateAttr("Format", nameIDEmail)
+	if o.NameIDFormat != "" {
+		nameID.CreateAttr("Format", o.NameIDFormat)
+	}
 	nameID.SetText(o.NameID)
 	conf := subj.CreateElement("saml:SubjectConfirmation")
 	conf.CreateAttr("Method", cmBearerURI)
@@ -136,7 +165,7 @@ func assertion(o ResponseOptions) *etree.Element {
 		data.CreateAttr("InResponseTo", o.InResponseTo)
 	}
 	data.CreateAttr("NotOnOrAfter", o.NotOnOrAfter.UTC().Format(samlTime))
-	data.CreateAttr("Recipient", o.Destination)
+	data.CreateAttr("Recipient", o.Recipient)
 
 	cond := a.CreateElement("saml:Conditions")
 	cond.CreateAttr("NotBefore", o.NotBefore.UTC().Format(samlTime))
@@ -156,7 +185,7 @@ func assertion(o ResponseOptions) *etree.Element {
 // inserted at index 1 rather than appended. Position does not change the
 // digest: the enveloped-signature transform removes the Signature before
 // hashing, wherever it sits.
-func sign(t testing.TB, kp *KeyPair, el *etree.Element) *etree.Element {
+func sign(t testing.TB, kp *KeyPair, el *etree.Element, sha1 bool) *etree.Element {
 	t.Helper()
 	if kp == nil {
 		t.Fatal("signing requested but no KeyPair given")
@@ -169,6 +198,9 @@ func sign(t testing.TB, kp *KeyPair, el *etree.Element) *etree.Element {
 	// declarations inherited from ancestors, so a signed Assertion still
 	// verifies after being moved into a different Response.
 	ctx.Canonicalizer = dsig.MakeC14N10ExclusiveCanonicalizerWithPrefixList("")
+	if sha1 {
+		ctx.Hash = crypto.SHA1
+	}
 	sig, err := ctx.ConstructSignature(el, true)
 	if err != nil {
 		t.Fatalf("sign %s: %v", el.Tag, err)
@@ -185,6 +217,7 @@ type AuthnRequestOptions struct {
 	Issuer       string // SP entity ID
 	Destination  string // IdP SSO URL
 	ACSURL       string
+	NameIDFormat string // NameIDPolicy Format; "" omits NameIDPolicy
 }
 
 // DefaultAuthnRequestOptions matches DefaultResponseOptions: its ID is the
@@ -212,6 +245,11 @@ func AuthnRequest(t testing.TB, o AuthnRequestOptions) []byte {
 	req.CreateAttr("AssertionConsumerServiceURL", o.ACSURL)
 	req.CreateAttr("ProtocolBinding", BindingPOST)
 	req.CreateElement("saml:Issuer").SetText(o.Issuer)
+	if o.NameIDFormat != "" {
+		p := req.CreateElement("samlp:NameIDPolicy")
+		p.CreateAttr("Format", o.NameIDFormat)
+		p.CreateAttr("AllowCreate", "true")
+	}
 
 	doc := etree.NewDocument()
 	doc.SetRoot(req)

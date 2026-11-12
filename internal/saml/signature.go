@@ -47,11 +47,21 @@ func verify(el *etree.Element, at time.Time) (Signature, *etree.Element) {
 		return sig, nil
 	}
 	sig.Certificate = describeCert(cert)
+	sig.Certificate.ValidityAtCapture = validityAt(cert, at)
 
 	ctx := dsig.NewDefaultValidationContext(&dsig.MemoryX509CertificateStore{
 		Roots: []*x509.Certificate{cert},
 	})
-	ctx.Clock = dsig.NewFakeClockAt(at)
+	// goxmldsig rejects a certificate outside its validity dates before it
+	// checks the cryptography, so an expired certificate would hide whether
+	// the signature itself is good. Expiry is recorded above and judged by
+	// its own rule; the cryptographic check runs at a moment the
+	// certificate is valid, so it answers only "was this altered?".
+	checkAt := at
+	if sig.Certificate.ValidityAtCapture != ValidityValid {
+		checkAt = cert.NotBefore
+	}
+	ctx.Clock = dsig.NewFakeClockAt(checkAt)
 	validated, err := ctx.Validate(el)
 	if err != nil {
 		sig.Error = safeSigError(err)
@@ -88,6 +98,19 @@ func describeCert(c *x509.Certificate) *Certificate {
 		SHA256:       strings.ToUpper(hex.EncodeToString(sum[:])),
 		SelfSigned:   bytes.Equal(c.RawSubject, c.RawIssuer),
 		PublicKeyAlg: c.PublicKeyAlgorithm.String(),
+	}
+}
+
+func validityAt(c *x509.Certificate, at time.Time) string {
+	switch {
+	case at.IsZero():
+		return ValidityUnknown
+	case at.Before(c.NotBefore):
+		return ValidityNotYetValid
+	case at.After(c.NotAfter):
+		return ValidityExpired
+	default:
+		return ValidityValid
 	}
 }
 

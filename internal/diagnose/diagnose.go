@@ -139,6 +139,17 @@ func DefaultRules() (*Registry, error) {
 	for _, r := range []Rule{
 		noSSOTraffic{},
 		missingRequestBodies{},
+		statusNotSuccess{},
+		audienceMismatch{},
+		destinationMismatch{},
+		recipientMismatch{},
+		correlation{},
+		unsigned{},
+		invalidSignature{},
+		weakAlgorithm{},
+		encryptedAssertion{},
+		nameIDProblems{},
+		multipleAssertions{},
 	} {
 		if err := reg.Register(r); err != nil {
 			return nil, fmt.Errorf("default rules: %w", err)

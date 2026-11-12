@@ -144,4 +144,15 @@ type Certificate struct {
 	SHA256       string `json:"sha256"` // fingerprint, as admin consoles show it
 	SelfSigned   bool   `json:"self_signed"`
 	PublicKeyAlg string `json:"public_key_algorithm"`
+	// ValidityAtCapture compares the certificate's dates with the HAR
+	// timestamp of the message: one of the Validity* constants.
+	ValidityAtCapture string `json:"validity_at_capture"`
 }
+
+// Certificate validity at the time a message was captured.
+const (
+	ValidityValid       = "valid"
+	ValidityExpired     = "expired"
+	ValidityNotYetValid = "not-yet-valid"
+	ValidityUnknown     = "unknown" // the HAR entry had no usable timestamp
+)
