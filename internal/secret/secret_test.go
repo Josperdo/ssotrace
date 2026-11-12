@@ -1,6 +1,7 @@
 package secret
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -47,6 +48,18 @@ func TestPreviewNeverRevealsFullSecret(t *testing.T) {
 	for _, in := range inputs {
 		if strings.Contains(Preview(in), in) {
 			t.Errorf("Preview(%q) contains the full input", in)
+		}
+	}
+}
+
+func TestHidden(t *testing.T) {
+	for _, s := range []string{"", "hunter2", "alice@example.com", "a-very-long-password-indeed"} {
+		got := Hidden(s)
+		if len(s) >= 3 && strings.Contains(got, s[:3]) {
+			t.Errorf("Hidden(%q) = %q reveals a prefix", s, got)
+		}
+		if !strings.Contains(got, fmt.Sprintf("(%d chars)", len([]rune(s)))) {
+			t.Errorf("Hidden(%q) = %q, missing length", s, got)
 		}
 	}
 }

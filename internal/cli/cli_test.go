@@ -200,8 +200,20 @@ func TestRun(t *testing.T) {
 		{
 			name:       "scan valid args",
 			args:       []string{"scan", validHAR},
+			wantCode:   ExitOK, // an empty capture holds no secrets
+			wantStdout: "No secrets found",
+		},
+		{
+			name:       "scan json",
+			args:       []string{"scan", validHAR, "--format", "json"},
+			wantCode:   ExitOK,
+			wantStdout: `"leaks": []`,
+		},
+		{
+			name:       "scan bad format",
+			args:       []string{"scan", validHAR, "--format", "markdown"},
 			wantCode:   ExitUsage,
-			wantStderr: "scan: not implemented yet",
+			wantStderr: "want text or json",
 		},
 		{
 			name:       "scan nonexistent file",
@@ -411,5 +423,26 @@ func TestUseColor(t *testing.T) {
 		if useColor(tc.flag, os.Stdout) {
 			t.Errorf("%s: color enabled", tc.name)
 		}
+	}
+}
+
+// TestScanFindsSecrets: a generated SAML login holds a signature and a
+// NameID, so scan exits 1 and lists them without printing the values.
+func TestScanFindsSecrets(t *testing.T) {
+	login := testutil.NewSAMLLogin(t, testutil.DefaultAuthnRequestOptions(), testutil.DefaultResponseOptions())
+	path := writeFile(t, t.TempDir(), "login.har", string(testutil.MarshalHAR(t, login.HAR)))
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"scan", path}, &stdout, &stderr, BuildInfo{}); code != ExitFail {
+		t.Fatalf("exit %d, want %d (stderr %q)", code, ExitFail, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"secrets found", "SignatureValue", "NameID", "ssotrace redact login.har -o login.redacted.har"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "alice@example.com") {
+		t.Error("scan output contains the user's email address")
 	}
 }

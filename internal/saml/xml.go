@@ -151,3 +151,9 @@ func text(el *etree.Element) string {
 	}
 	return strings.TrimSpace(b.String())
 }
+
+// ParseXML parses raw under the same limits as Parse (depth cap, no
+// DOCTYPE) and returns the root element. The redactor uses it to edit a
+// message in place, so redaction never reads XML more loosely than
+// diagnosis does.
+func ParseXML(raw []byte) (*etree.Element, error) { return parseXML(raw) }

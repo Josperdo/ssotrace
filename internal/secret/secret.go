@@ -34,3 +34,13 @@ func Preview(s string) string {
 	prefix := []rune(s)[:prefixLen]
 	return fmt.Sprintf("%s… (%d chars)", string(prefix), n)
 }
+
+// Hidden returns a stand-in that shows only the length of s.
+//
+// Use it instead of Preview for values whose first characters are
+// themselves sensitive: a password's prefix narrows a guess, and an email
+// address's prefix ("alice@") identifies the person. Random tokens keep
+// using Preview, whose prefix is harmless and helps match two occurrences.
+func Hidden(s string) string {
+	return fmt.Sprintf("[hidden] (%d chars)", utf8.RuneCountInString(s))
+}

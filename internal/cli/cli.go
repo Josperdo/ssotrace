@@ -19,6 +19,7 @@ import (
 	"github.com/Josperdo/ssotrace/internal/diagnose"
 	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
+	"github.com/Josperdo/ssotrace/internal/redact"
 	"github.com/Josperdo/ssotrace/internal/report"
 )
 
@@ -44,7 +45,7 @@ Usage:
   ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
                     [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
   ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
-  ssotrace scan     <file.har> [--max-size SIZE]
+  ssotrace scan     <file.har> [--format text|json] [--no-color] [--max-size SIZE]
   ssotrace version
   ssotrace help
 
@@ -87,7 +88,7 @@ func Run(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	case "redact":
 		return runRedact(rest, stdout, stderr)
 	case "scan":
-		return runScan(rest, stdout, stderr)
+		return runScan(rest, stdout, stderr, info)
 	default:
 		return usageError(stderr, fmt.Sprintf("unknown command %q", cmd))
 	}
@@ -197,8 +198,10 @@ func runRedact(args []string, stdout, stderr io.Writer) int {
 	return notImplemented(stderr, "redact")
 }
 
-func runScan(args []string, stdout, stderr io.Writer) int {
+func runScan(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	fs := newFlagSet("scan")
+	format := fs.String("format", "text", "output format: text or json")
+	noColor := fs.Bool("no-color", false, "disable colored output")
 	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
@@ -208,10 +211,31 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 	if code, ok := requireOneFile("scan", pos, stderr); !ok {
 		return code
 	}
-	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+	if *format != "text" && *format != "json" {
+		return usageError(stderr, fmt.Sprintf("scan: invalid --format %q (want text or json)", *format))
+	}
+	h, ok := loadHAR(pos[0], int64(*maxSize), stderr)
+	if !ok {
 		return ExitUsage
 	}
-	return notImplemented(stderr, "scan")
+	leaks := redact.Scan(h)
+	file := filepath.Base(pos[0])
+	var err error
+	if *format == "json" {
+		err = report.ScanJSON(stdout, file, info.Version, leaks)
+	} else {
+		err = report.ScanText(stdout, file, leaks, report.TextOptions{Color: useColor(*noColor, stdout)})
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+		return ExitUsage
+	}
+	// Like diagnose: 1 means "something needs your attention", so a CI job
+	// can refuse to attach a HAR that still holds secrets.
+	if len(leaks) > 0 {
+		return ExitFail
+	}
+	return ExitOK
 }
 
 // loadHAR loads path and reports any failure as an input error. Usage is
