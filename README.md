@@ -3,13 +3,14 @@
 [![CI](https://github.com/Josperdo/ssotrace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Josperdo/ssotrace/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/Josperdo/ssotrace)](https://github.com/Josperdo/ssotrace/commits/main)
-[![Release](https://img.shields.io/github/v/release/Josperdo/ssotrace)](https://github.com/Josperdo/ssotrace/releases/latest)
 
 Diagnose failed SSO logins from a HAR file, and redact it so it's safe to share.
 
 ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL, clock skew, rotated or expired certificates, missing or invalid signatures, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
 
 **Scope:** ssotrace diagnoses **SAML 2.0** logins. For OAuth 2.0 and OpenID Connect logins it reports redirect loops and identity provider error codes, and `scan` and `redact` handle their tokens and codes, but it does not check the OAuth or OIDC messages themselves.
+
+**Status:** early and evolving. There are no versioned releases; the `main` branch is the current version, and behavior and output may change. CI tests every change on Linux, macOS, and Windows.
 
 ![ssotrace diagnosing a failed login, scanning the capture for secrets, and redacting it](docs/demo.gif)
 
@@ -18,21 +19,24 @@ ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 exch
 
 ## Install
 
-**Homebrew** (macOS):
+ssotrace is a single Go program with no dependencies to install. It runs on macOS, Linux, and Windows. You need [Go](https://go.dev/dl/) (the version in `go.mod` or newer).
 
-```sh
-brew install josperdo/tap/ssotrace
-```
-
-On Linux and Windows, use a prebuilt binary or `go install`.
-
-**Prebuilt binaries** for macOS, Linux, and Windows (amd64 and arm64) are on the [releases page](https://github.com/Josperdo/ssotrace/releases/latest), with SHA-256 checksums and an SBOM. The binaries are not code-signed, so on first run macOS may say it "cannot verify the developer" (right-click the file, choose **Open**, or install with Homebrew instead), and Windows SmartScreen may show "Windows protected your PC" (choose **More info → Run anyway**). Check the download against `checksums.txt` first.
-
-**With Go:**
+**With Go** (puts `ssotrace` in your Go bin directory):
 
 ```sh
 go install github.com/Josperdo/ssotrace/cmd/ssotrace@latest
 ```
+
+**From source** (also needs `make`):
+
+```sh
+git clone https://github.com/Josperdo/ssotrace.git
+cd ssotrace
+make build
+./bin/ssotrace version
+```
+
+The result is a single static binary with no runtime dependencies.
 
 ## Quick start
 
@@ -50,19 +54,6 @@ ssotrace redact login.har -o login.redacted.har
 ```
 
 `diagnose` exits `1` when it finds a failure, so it also works in scripts and CI. Add `--format markdown` to paste the result into a ticket.
-
-### Build from source
-
-Requires Go (see `go.mod` for the version) and `make`.
-
-```sh
-git clone https://github.com/Josperdo/ssotrace.git
-cd ssotrace
-make build
-./bin/ssotrace version
-```
-
-The result is a single static binary with no runtime dependencies.
 
 ## Usage
 
@@ -108,7 +99,7 @@ See [SECURITY.md](SECURITY.md) for the security model and how to report a vulner
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+This is a personal project, maintained as time allows. Bug reports are welcome as issues; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

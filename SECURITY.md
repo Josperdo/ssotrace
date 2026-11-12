@@ -10,7 +10,7 @@ Please report vulnerabilities privately through GitHub: **Security tab → Repor
 
 ## Supported versions
 
-Only the latest release receives security fixes.
+ssotrace is not published as versioned releases. Security fixes go to the `main` branch; install or rebuild from it to get them.
 
 ## Security model
 

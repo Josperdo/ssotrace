@@ -1,0 +1,7 @@
+# Issues are for bug reports only (see CONTRIBUTING.md), so the blank
+# issue option is off and security reports are sent to private reporting.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Josperdo/ssotrace/security/advisories/new
+    about: Please report security problems privately, never in a public issue.

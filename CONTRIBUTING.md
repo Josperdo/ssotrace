@@ -1,50 +1,7 @@
-# Contributing to ssotrace
+# Contributing
 
-Thanks for helping. Please read [SECURITY.md](SECURITY.md) first: this tool handles files full of credentials, and that shapes most of the rules below.
+ssotrace is a personal project, shared as-is and maintained as time allows.
 
-## Development setup
-
-You need:
-
-- **Go**, at the version in `go.mod`
-- **golangci-lint** v2: `brew install golangci-lint`
-- **govulncheck**: `go install golang.org/x/vuln/cmd/govulncheck@latest`
-- **Docker** with Compose, only if you use the local Keycloak lab (see [`lab/README.md`](lab/README.md))
-
-Then install the git hooks:
-
-```sh
-make hooks
-```
-
-The pre-commit hook refuses to commit HAR files outside `testdata/` and lab credentials.
-
-## Before opening a pull request
-
-```sh
-make check
-```
-
-This formats, vets, lints, runs tests with the race detector, and checks for known vulnerabilities. CI runs the same steps.
-
-New behavior needs tests, including at least one passing and one failing case.
-
-## Test fixtures
-
-Fixtures must be synthetic. No real HAR files, tokens, emails, or tenant IDs, ever. See [`testdata/README.md`](testdata/README.md) for the full rules.
-
-## Rule IDs
-
-Rules are identified as `HAR001`, `SAML001`, and so on. The `OIDC` prefix is reserved and has no rules in this version.
-
-- IDs are stable and are **never reused**, even after a rule is removed.
-- Every rule has an entry in [`docs/rules.md`](docs/rules.md), using the template there.
-- Every rule ships with at least one passing and one failing fixture.
-
-## Dependencies
-
-ssotrace uses the Go standard library wherever it can, which keeps the binary small and the supply chain short. **Do not add a new dependency without discussing it in an issue first.** Explain what it does and why the standard library isn't enough.
-
-## Reporting security issues
-
-Do not open a public issue. Use private reporting as described in [SECURITY.md](SECURITY.md).
+- **Found a bug?** Open an issue using the bug report template. Never attach a real HAR file: describe the problem, or reproduce it with a file processed by `ssotrace redact`.
+- **Found a security problem?** Report it privately, as described in [SECURITY.md](SECURITY.md).
+- **Want to change it?** You're welcome to fork it under the [MIT license](LICENSE). `make check` runs everything CI runs.
