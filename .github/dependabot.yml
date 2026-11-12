@@ -9,3 +9,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # The lab SP's build image pins a Go patch release. Without this entry the
+  # pin only moves when someone remembers, so a Go security fix can sit
+  # unapplied in the lab while the root module is already patched.
+  - package-ecosystem: docker
+    directory: /lab/sp
+    schedule:
+      interval: weekly
