@@ -187,6 +187,7 @@ Severity: FAIL
 What it means:
 A signature on the AuthnRequest, Response, or assertion does not verify against the certificate embedded in it: the content changed after signing, or it was signed with a different key. A signature that does verify proves only that the content is unchanged (integrity), not that the signer is the IdP you expect (trust). Certificate expiry is reported separately and does not cause this finding.
 A signature that does not embed its certificate is reported as INFO ("could not be checked"), not FAIL: some IdPs leave the certificate out on purpose because the SP already has it.
+In a file produced by `ssotrace redact`, signature values have been replaced with a record of whether they verified before removal. A recorded pass counts as a pass, and the finding says it is a record that cannot be re-checked; a recorded failure is still a FAIL.
 
 Common causes:
 - A proxy, WAF, or browser extension rewrote the message.

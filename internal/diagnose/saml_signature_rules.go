@@ -86,12 +86,31 @@ func (invalidSignature) ID() string { return "SAML008" }
 func (invalidSignature) Check(ctx Context) []Finding {
 	var out []Finding
 	checked := 0
+	redacted := 0
 	for _, p := range signedParts(ctx) {
 		if !p.sig.Present {
 			continue
 		}
 		checked++
 		if p.sig.Verified {
+			continue
+		}
+		if p.sig.Redacted {
+			redacted++
+			if p.sig.RedactedVerified {
+				continue
+			}
+			out = append(out, Finding{
+				RuleID:   "SAML008",
+				Flow:     flowRef(p.flow),
+				Severity: Fail,
+				Title:    p.label + " signature was invalid before redaction",
+				Detail: "This file was redacted by ssotrace, which removed the signature after checking it. " +
+					"At that time the " + p.label + " signature did not verify against the certificate embedded in it, so the SP would have rejected the message.",
+				Fix: "Ask for the original capture, or run ssotrace on it directly, to see why the signature failed. " +
+					"Common causes: a proxy or browser extension rewrote the message, or the IdP signs with a key that does not match its certificate.",
+				Evidence: []Evidence{{Label: p.label, Value: where(p.msg)}},
+			})
 			continue
 		}
 		if p.sig.Error == saml.ErrNoEmbeddedCert {
@@ -131,10 +150,20 @@ func (invalidSignature) Check(ctx Context) []Finding {
 		out = append(out, f)
 	}
 	if len(out) == 0 && checked > 0 {
-		return []Finding{passFinding("SAML008", "Signatures verify",
-			fmt.Sprintf("All %s verify against the certificate embedded in them. "+
-				"This proves the content was not changed after signing, not that the signer is the IdP you expect.",
-				plural(checked, "signature")))}
+		detail := fmt.Sprintf("All %s verify against the certificate embedded in them. "+
+			"This proves the content was not changed after signing, not that the signer is the IdP you expect.",
+			plural(checked, "signature"))
+		if redacted > 0 {
+			// Say plainly that this part is a record, not a check: anyone can
+			// edit a file to say "verified".
+			detail = fmt.Sprintf("This file was redacted: %s were removed by ssotrace redact, which recorded that they verified before removal. "+
+				"That record is part of the file and cannot be re-checked; for proof, run ssotrace on the original capture.",
+				plural(redacted, "signature"))
+			if checked > redacted {
+				detail += fmt.Sprintf(" The other %s verified in this run.", plural(checked-redacted, "signature"))
+			}
+		}
+		return []Finding{passFinding("SAML008", "Signatures verify", detail)}
 	}
 	return out
 }

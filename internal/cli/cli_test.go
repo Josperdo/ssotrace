@@ -16,6 +16,7 @@ const (
 	validHAR     = "{valid}"     // a minimal, well-formed HAR
 	malformedHAR = "{malformed}" // a JSON file that is not a HAR
 	missingHAR   = "{missing}"   // a path that does not exist
+	outHAR       = "{out}"       // a fresh output path in the temp directory
 )
 
 func TestRun(t *testing.T) {
@@ -26,6 +27,7 @@ func TestRun(t *testing.T) {
 		validHAR:     writeFile(t, dir, "valid.har", `{"log":{"version":"1.2","entries":[]}}`),
 		malformedHAR: writeFile(t, dir, "malformed.har", `{"not":"a har"}`),
 		missingHAR:   filepath.Join(dir, "missing.har"),
+		outHAR:       filepath.Join(dir, "out.har"),
 	}
 
 	tests := []struct {
@@ -181,9 +183,9 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:       "redact valid args",
-			args:       []string{"redact", validHAR, "-o", "out.har"},
-			wantCode:   ExitUsage,
-			wantStderr: "redact: not implemented yet",
+			args:       []string{"redact", validHAR, "-o", outHAR},
+			wantCode:   ExitOK,
+			wantStdout: "The leak scan found no secrets",
 		},
 		{
 			name:       "redact malformed input",
@@ -444,5 +446,58 @@ func TestScanFindsSecrets(t *testing.T) {
 	}
 	if strings.Contains(out, "alice@example.com") {
 		t.Error("scan output contains the user's email address")
+	}
+}
+
+// TestRedactEndToEnd redacts a generated SAML login through the CLI and
+// checks the promises: 0600 output, clean scan, original untouched, and
+// no silent overwrite.
+func TestRedactEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	login := testutil.NewSAMLLogin(t, testutil.DefaultAuthnRequestOptions(), testutil.DefaultResponseOptions())
+	in := writeFile(t, dir, "login.har", string(testutil.MarshalHAR(t, login.HAR)))
+	original, _ := os.ReadFile(in)
+	out := filepath.Join(dir, "login.redacted.har")
+
+	run := func(args ...string) (int, string, string) {
+		var stdout, stderr bytes.Buffer
+		code := Run(append([]string{"redact"}, args...), &stdout, &stderr, BuildInfo{})
+		return code, stdout.String(), stderr.String()
+	}
+
+	if code, _, errOut := run(in, "-o", out); code != ExitOK {
+		t.Fatalf("redact exit %d: %s", code, errOut)
+	}
+	info, err := os.Stat(out)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("output stat = %v, %v; want 0600", info, err)
+	}
+	if now, _ := os.ReadFile(in); !bytes.Equal(now, original) {
+		t.Error("input file changed")
+	}
+	written, _ := os.ReadFile(out)
+	if bytes.Contains(written, []byte("alice@example.com")) {
+		t.Error("redacted file still names the user")
+	}
+	if !bytes.Contains(written, []byte("Diagnosis of the original capture: no failures or warnings")) {
+		t.Error("log.comment does not summarize the diagnosis")
+	}
+
+	// Scanning the result agrees it is clean.
+	var scanOut bytes.Buffer
+	if code := Run([]string{"scan", out}, &scanOut, &bytes.Buffer{}, BuildInfo{}); code != ExitOK {
+		t.Errorf("scan of redacted file exit %d:\n%s", code, scanOut.String())
+	}
+
+	// Second run: refused without --force, allowed with it.
+	if code, _, errOut := run(in, "-o", out); code != ExitUsage || !strings.Contains(errOut, "--force") {
+		t.Errorf("rerun without --force: exit %d, stderr %q", code, errOut)
+	}
+	if code, _, errOut := run(in, "-o", out, "--force"); code != ExitOK {
+		t.Errorf("rerun with --force: exit %d, stderr %q", code, errOut)
+	}
+	// Never the input, even with --force.
+	if code, _, _ := run(in, "-o", in, "--force"); code != ExitUsage {
+		t.Errorf("redact onto the input: exit %d", code)
 	}
 }

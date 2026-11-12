@@ -80,6 +80,11 @@ func Scan(h *har.HAR) []Leak {
 		return nil
 	}
 	s := &scanner{seen: map[string]bool{}}
+	// The log comment is free text: the redactor writes only its own summary
+	// there, but a scan that skipped a field because "we wrote it" would not
+	// be failing closed.
+	s.idx = -1
+	s.text("log comment", h.Log.Comment)
 	for i := range h.Log.Entries {
 		s.entry(i, &h.Log.Entries[i])
 	}

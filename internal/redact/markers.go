@@ -1,6 +1,10 @@
 package redact
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Josperdo/ssotrace/internal/saml"
+)
 
 // Markers the redactor writes in place of secrets. The scanner treats a
 // value in one of these forms as safe and anything else as a possible
@@ -23,8 +27,8 @@ const (
 	// what ssotrace found before removing it. The rest of the Signature
 	// (algorithms, certificate) stays, so expiry and algorithm checks still
 	// work on the redacted file.
-	sigVerified   = "ssotrace-redacted-verified"
-	sigUnverified = "ssotrace-redacted-unverified"
+	sigVerified   = saml.RedactedSigVerified
+	sigUnverified = saml.RedactedSigUnverified
 
 	// jwtSigMarker replaces a JWT's signature segment.
 	jwtSigMarker = "ssotrace-redacted"
@@ -39,6 +43,10 @@ func isRedacted(v string) bool {
 	case strings.HasPrefix(v, Redacted), strings.HasPrefix(v, maskPrefix):
 		return true
 	case strings.HasSuffix(v, "@"+maskDomain):
+		return true
+	case strings.HasSuffix(v, "."+jwtSigMarker):
+		// A JWT the redactor rewrote: its claims are filtered and its
+		// signature is gone.
 		return true
 	}
 	return false

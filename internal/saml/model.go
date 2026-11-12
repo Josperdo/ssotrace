@@ -128,6 +128,12 @@ type Signature struct {
 	Verified  bool   `json:"verified"`
 	TrustedBy string `json:"trusted_by,omitempty"` // "embedded-certificate" until a pinned cert is supplied
 	Error     string `json:"error,omitempty"`
+	// Redacted means ssotrace redact replaced the SignatureValue with a
+	// marker, so the signature cannot be checked again. RedactedVerified
+	// is what the marker says the check found before removal. It is a
+	// claim recorded in the file, not something this run proved.
+	Redacted         bool `json:"redacted,omitempty"`
+	RedactedVerified bool `json:"redacted_verified,omitempty"`
 
 	Algorithm       string       `json:"algorithm,omitempty"`
 	DigestAlgorithm string       `json:"digest_algorithm,omitempty"`

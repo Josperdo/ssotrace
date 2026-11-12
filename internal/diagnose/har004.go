@@ -159,3 +159,39 @@ func scannableBody(c *har.Content) string {
 	}
 	return string(b)
 }
+
+// ErrorCodesInBody returns the IdP error codes in a response body, in the
+// order found, without duplicates. It applies exactly the checks HAR004
+// applies to bodies, so the redactor can keep these codes when it removes
+// a body and HAR004 still finds them in the redacted file.
+func ErrorCodesInBody(c *har.Content) []string {
+	body := scannableBody(c)
+	if body == "" {
+		return nil
+	}
+	var codes []string
+	seen := map[string]bool{}
+	add := func(code string) {
+		if !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
+		}
+	}
+	for _, p := range errorPatterns {
+		for _, code := range p.re.FindAllString(body, -1) {
+			add(code)
+		}
+	}
+	if strings.Contains(c.MimeType, "json") {
+		for _, m := range jsonError.FindAllStringSubmatch(body, -1) {
+			if oauthErrors[m[1]] {
+				add(m[1])
+			}
+		}
+	}
+	return codes
+}
+
+// IsOAuthError reports whether s is a standard OAuth 2.0 or OpenID Connect
+// error value.
+func IsOAuthError(s string) bool { return oauthErrors[s] }

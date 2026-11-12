@@ -18,6 +18,14 @@ import (
 // the SP to already have it, so it is not evidence of tampering.
 const ErrNoEmbeddedCert = "signature carries no X509Certificate"
 
+// Markers ssotrace redact writes in place of a SignatureValue. They live
+// here, not in package redact, because the parser must recognize them and
+// redact already imports this package.
+const (
+	RedactedSigVerified   = "ssotrace-redacted-verified"
+	RedactedSigUnverified = "ssotrace-redacted-unverified"
+)
+
 // TrustEmbedded marks a signature checked only against the certificate the
 // message itself carries.
 const TrustEmbedded = "embedded-certificate"
@@ -53,6 +61,19 @@ func verify(el *etree.Element, at time.Time) (Signature, *etree.Element) {
 	}
 	sig.Certificate = describeCert(cert)
 	sig.Certificate.ValidityAtCapture = validityAt(cert, at)
+
+	// A redacted signature has nothing left to verify. Checked after the
+	// certificate on purpose: a signature that had no certificate was
+	// "unchecked" before redaction and must stay that way, not turn into
+	// "unverified".
+	switch strings.TrimSpace(text(sigEl.FindElement("./SignatureValue"))) {
+	case RedactedSigVerified:
+		sig.Redacted, sig.RedactedVerified = true, true
+		return sig, nil
+	case RedactedSigUnverified:
+		sig.Redacted = true
+		return sig, nil
+	}
 
 	ctx := dsig.NewDefaultValidationContext(&dsig.MemoryX509CertificateStore{
 		Roots: []*x509.Certificate{cert},

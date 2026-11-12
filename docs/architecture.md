@@ -18,7 +18,7 @@ HAR file → har.Load (bounded) → flow.TraceSAML (decode + correlate) → diag
 | `internal/oidc` | Parses OAuth 2.0 and OpenID Connect requests, callbacks, and tokens. |
 | `internal/flow` | Recognizes which HAR entries carry SAML or OAuth/OIDC messages, records where and when each SAML message was sent, and pairs AuthnRequests with Responses by `InResponseTo`. |
 | `internal/diagnose` | The rule engine: severities, findings, the `Rule` interface, and the rule registry. |
-| `internal/redact` | Removes credentials from a HAR with SSO-aware rules, then scans the result for leaks. |
+| `internal/redact` | Builds a shareable copy of a HAR from an allowlist (names kept, secret values removed, SAML identities masked with salted hashes, signatures replaced with a record of their result), then proves it clean with the same leak scanner `ssotrace scan` uses. Writes atomically with `0600` permissions and never over the input. |
 | `internal/report` | Renders findings and flows. JSON output carries `"schema_version": 1`. |
 | `internal/kb` | Maps vendor error codes to plain-English causes and fixes, from data embedded in the binary. |
 | `internal/secret` | Produces safe previews (short prefix plus length) of secret values for display. |

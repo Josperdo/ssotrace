@@ -154,3 +154,12 @@ func TestScanCommentSplitNameID(t *testing.T) {
 		t.Error("NameID hidden behind a comment was not reported")
 	}
 }
+
+func TestScanLogComment(t *testing.T) {
+	h := testutil.NewHAR()
+	h.Log.Comment = "exported by alice@example.com"
+	leaks := Scan(h)
+	if len(leaks) != 1 || leaks[0].Kind != KindEmail || leaks[0].Entry != -1 {
+		t.Errorf("leaks = %+v, want one email in the log comment", leaks)
+	}
+}

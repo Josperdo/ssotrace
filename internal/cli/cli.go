@@ -6,7 +6,9 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,7 +46,7 @@ const usageText = `ssotrace diagnoses failed SSO logins from a HAR file and reda
 Usage:
   ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
                     [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
-  ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
+  ssotrace redact   <file.har> -o <out.har> [--force] [--keep-bodies] [--max-size SIZE]
   ssotrace scan     <file.har> [--format text|json] [--no-color] [--max-size SIZE]
   ssotrace version
   ssotrace help
@@ -86,7 +88,7 @@ func Run(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	case "diagnose":
 		return runDiagnose(rest, stdout, stderr, info)
 	case "redact":
-		return runRedact(rest, stdout, stderr)
+		return runRedact(rest, stdout, stderr, info)
 	case "scan":
 		return runScan(rest, stdout, stderr, info)
 	default:
@@ -171,9 +173,11 @@ func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	return ExitOK
 }
 
-func runRedact(args []string, stdout, stderr io.Writer) int {
+func runRedact(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	fs := newFlagSet("redact")
 	out := fs.String("o", "", "path for the redacted HAR (required)")
+	force := fs.Bool("force", false, "replace the output file if it already exists")
+	keepBodies := fs.Bool("keep-bodies", false, "keep response bodies (the leak scan still runs)")
 	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
@@ -187,15 +191,17 @@ func runRedact(args []string, stdout, stderr io.Writer) int {
 		return usageError(stderr, "redact: -o <out.har> is required")
 	}
 	// The input file is evidence; overwriting it would destroy the only
-	// unredacted copy. This catches the obvious case early. The real write
-	// path will also compare file identity, which handles symlinks.
+	// unredacted copy. This catches the obvious case before any work is
+	// done; redact.WriteFile checks file identity again, which also
+	// catches symlinks and hard links.
 	if samePath(pos[0], *out) {
 		return usageError(stderr, "redact: -o must not be the input file")
 	}
-	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+	h, ok := loadHAR(pos[0], int64(*maxSize), stderr)
+	if !ok {
 		return ExitUsage
 	}
-	return notImplemented(stderr, "redact")
+	return writeRedacted(h, pos[0], *out, *force, *keepBodies, info.Version, stdout, stderr)
 }
 
 func runScan(args []string, stdout, stderr io.Writer, info BuildInfo) int {
@@ -336,11 +342,6 @@ func usageError(stderr io.Writer, msg string) int {
 	return ExitUsage
 }
 
-func notImplemented(stderr io.Writer, cmd string) int {
-	_, _ = fmt.Fprintf(stderr, "%s: not implemented yet\n", cmd)
-	return ExitUsage
-}
-
 func writeUsage(w io.Writer) {
 	_, _ = io.WriteString(w, usageText)
 }
@@ -361,4 +362,92 @@ func useColor(noColor bool, w io.Writer) bool {
 	fi, err := f.Stat()
 	// A character device is a terminal; a pipe or regular file is not.
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// writeRedacted redacts h, proves the result is clean, and only then
+// writes it. The order is the safety property: the leak scan runs on the
+// exact bytes about to be written, and any finding means nothing is
+// written at all (fail closed).
+func writeRedacted(h *har.HAR, in, out string, force, keepBodies bool, version string, stdout, stderr io.Writer) int {
+	red, err := redact.Redact(h, redact.Options{KeepBodies: keepBodies, Comment: diagnosisComment(h, version)})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: redact: %v\n", err)
+		return ExitUsage
+	}
+	data, err := json.MarshalIndent(red, "", "  ")
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: redact: %v\n", err)
+		return ExitUsage
+	}
+	// Scan what will actually be written: decode the bytes back rather
+	// than trusting the in-memory copy.
+	written, err := har.Decode(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: redact: output does not read back as a HAR: %v\n", err)
+		return ExitUsage
+	}
+	if leaks := redact.Scan(written); len(leaks) > 0 {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: redact: the redacted output still contains %d possible secret(s); nothing was written.\n", len(leaks))
+		for i, l := range leaks {
+			if i == 5 {
+				_, _ = fmt.Fprintf(stderr, "  … %d more\n", len(leaks)-5)
+				break
+			}
+			_, _ = fmt.Fprintf(stderr, "  entry %d: %s: %s (%s)\n", l.Entry, l.Kind, l.Where, l.Preview)
+		}
+		if keepBodies {
+			_, _ = fmt.Fprintln(stderr, "Response bodies were kept (--keep-bodies). Try again without it.")
+		} else {
+			_, _ = fmt.Fprintln(stderr, "This is a bug in ssotrace's redaction. Please report it with the lines above, never with the HAR file.")
+		}
+		return ExitUsage
+	}
+	if err := redact.WriteFile(out, in, data, force); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: redact: %v\n", err)
+		return ExitUsage
+	}
+	_, _ = fmt.Fprintf(stdout, "Wrote %s (%d entries). The leak scan found no secrets in it.\n", out, len(red.Log.Entries))
+	return ExitOK
+}
+
+// diagnosisComment summarizes the original capture's diagnosis for the
+// redacted file's log.comment, so the file still tells its story in any
+// HAR viewer. It uses only rule IDs, severities, and titles, which are
+// ssotrace's own text: never evidence, which comes from the capture.
+func diagnosisComment(h *har.HAR, version string) string {
+	var b strings.Builder
+	b.WriteString("Redacted by ssotrace")
+	if version != "" {
+		b.WriteString(" " + version)
+	}
+	b.WriteString(". Cookie, header, and token values, passwords, response bodies, SAML signatures, and user identifiers were removed or masked.")
+
+	reg, err := diagnose.DefaultRules()
+	if err != nil {
+		return b.String()
+	}
+	findings := diagnose.Run(diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: diagnose.DefaultClockSkew}, reg)
+	var fails, warns []string
+	for _, f := range findings {
+		switch f.Severity {
+		case diagnose.Fail:
+			fails = append(fails, f.RuleID+" "+f.Title)
+		case diagnose.Warn:
+			warns = append(warns, f.RuleID+" "+f.Title)
+		}
+	}
+	switch {
+	case len(fails) == 0 && len(warns) == 0:
+		b.WriteString(" Diagnosis of the original capture: no failures or warnings.")
+	default:
+		fmt.Fprintf(&b, " Diagnosis of the original capture: %d failure(s), %d warning(s).", len(fails), len(warns))
+		for _, f := range fails {
+			b.WriteString(" FAIL " + f + ".")
+		}
+		for _, w := range warns {
+			b.WriteString(" WARN " + w + ".")
+		}
+	}
+	b.WriteString(" Run `ssotrace diagnose` on this file for details.")
+	return b.String()
 }
