@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/saml"
@@ -148,4 +149,42 @@ func lastPart(urn string) string {
 		return urn[i+1:]
 	}
 	return urn
+}
+
+// sentAt returns when the browser sent m, from its HAR entry. This is the
+// reference time for every time check: never the wall clock, so a capture
+// gives the same diagnosis whenever it is analyzed.
+//
+// It is the browser's clock, not the SP's. Findings that compare times say
+// so, because a wrong clock on the user's machine shifts every timestamp.
+func sentAt(ctx Context, m *flow.SAMLMessage) (time.Time, bool) {
+	if ctx.HAR == nil || m.Entry < 0 || m.Entry >= len(ctx.HAR.Log.Entries) {
+		return time.Time{}, false
+	}
+	t, err := ctx.HAR.Log.Entries[m.Entry].Started()
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// humanDuration renders d for people: "2m30s" becomes "2 minutes 30
+// seconds", with sub-second noise dropped.
+func humanDuration(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	d = d.Round(time.Second)
+	h, m, s := int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60
+	var parts []string
+	if h > 0 {
+		parts = append(parts, plural(h, "hour"))
+	}
+	if m > 0 {
+		parts = append(parts, plural(m, "minute"))
+	}
+	if s > 0 || len(parts) == 0 {
+		parts = append(parts, plural(s, "second"))
+	}
+	return strings.Join(parts, " ")
 }

@@ -32,6 +32,7 @@ func testIDP(t *testing.T) *testutil.KeyPair {
 // Response posted to the SP's ACS URL.
 type login struct {
 	noRequest  bool                                // IdP-initiated, or request not captured
+	idp        *testutil.KeyPair                   // signing key; default the shared test IdP
 	noResponse bool                                // the IdP never answered
 	reqStatus  int                                 // IdP's HTTP status for the request; default 200
 	postURL    string                              // where the browser posted the Response; default the ACS URL
@@ -69,7 +70,11 @@ func samlCtx(t *testing.T, logins ...login) Context {
 		if l.resp != nil {
 			l.resp(&po)
 		}
-		xml := testutil.Response(t, testIDP(t), po)
+		kp := l.idp
+		if kp == nil {
+			kp = testIDP(t)
+		}
+		xml := testutil.Response(t, kp, po)
 		if l.mutate != nil {
 			xml = l.mutate(xml)
 		}
@@ -82,7 +87,7 @@ func samlCtx(t *testing.T, logins ...login) Context {
 		at = at.Add(time.Minute)
 	}
 	h := testutil.NewHAR(entries...)
-	return Context{HAR: h, SAML: flow.TraceSAML(h)}
+	return Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: DefaultClockSkew}
 }
 
 type ruleCase struct {

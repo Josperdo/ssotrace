@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
@@ -90,7 +91,15 @@ type Context struct {
 	// SAML is every SAML message in the capture, decoded and paired into
 	// flows. Rules must tolerate nil.
 	SAML *flow.SAMLTrace
+	// ClockSkew is how far apart the IdP's and the SP's clocks may be
+	// before a time check fails. SPs allow some leeway because no two
+	// servers agree to the second; zero means strict.
+	ClockSkew time.Duration
 }
+
+// DefaultClockSkew is the leeway used when the user does not set one. SPs
+// commonly allow between 2 and 5 minutes.
+const DefaultClockSkew = 3 * time.Minute
 
 // Rule is one diagnostic check. ID must be stable and never reused.
 type Rule interface {
@@ -144,8 +153,10 @@ func DefaultRules() (*Registry, error) {
 		destinationMismatch{},
 		recipientMismatch{},
 		correlation{},
+		validityWindow{},
 		unsigned{},
 		invalidSignature{},
+		certExpiry{},
 		weakAlgorithm{},
 		encryptedAssertion{},
 		nameIDProblems{},

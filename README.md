@@ -28,6 +28,7 @@ The result is a single static binary with no runtime dependencies.
 
 ```
 ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
+                  [--clock-skew DURATION]
 ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
 ssotrace scan     <file.har> [--max-size SIZE]
 ssotrace version
@@ -35,6 +36,8 @@ ssotrace help
 ```
 
 HAR files larger than 256 MiB are refused by default. Raise the limit with `--max-size`, for example `--max-size 1GiB`.
+
+Time checks allow 3 minutes of clock difference between the identity provider and the service provider, a common SP default. Match your SP with `--clock-skew`, for example `--clock-skew 5m`, or use `--clock-skew 0` for a strict check.
 
 Exit codes: `0` no failures found, `1` at least one failure found, `2` usage or input error.
 

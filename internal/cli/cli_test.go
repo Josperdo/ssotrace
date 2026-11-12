@@ -102,6 +102,30 @@ func TestRun(t *testing.T) {
 			wantStderr: "diagnose --format markdown: not implemented yet",
 		},
 		{
+			name:       "diagnose clock skew accepted",
+			args:       []string{"diagnose", validHAR, "--format", "json", "--clock-skew", "90s"},
+			wantCode:   ExitFail,
+			wantStdout: `"schema_version": 1`,
+		},
+		{
+			name:       "diagnose clock skew negative",
+			args:       []string{"diagnose", validHAR, "--clock-skew", "-1m"},
+			wantCode:   ExitUsage,
+			wantStderr: "between 0 and 1h",
+		},
+		{
+			name:       "diagnose clock skew too large",
+			args:       []string{"diagnose", validHAR, "--clock-skew", "5h"},
+			wantCode:   ExitUsage,
+			wantStderr: "between 0 and 1h",
+		},
+		{
+			name:       "diagnose clock skew not a duration",
+			args:       []string{"diagnose", validHAR, "--clock-skew", "5"},
+			wantCode:   ExitUsage,
+			wantStderr: "invalid value",
+		},
+		{
 			name:       "double dash makes dash-prefixed name a file",
 			args:       []string{"diagnose", "--", "-weird.har"},
 			wantCode:   ExitUsage,

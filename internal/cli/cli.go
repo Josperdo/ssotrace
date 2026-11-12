@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 
 	"github.com/Josperdo/ssotrace/internal/diagnose"
 	"github.com/Josperdo/ssotrace/internal/flow"
@@ -38,13 +39,16 @@ const usageText = `ssotrace diagnoses failed SSO logins from a HAR file and reda
 
 Usage:
   ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
+                    [--clock-skew DURATION]
   ssotrace redact   <file.har> -o <out.har> [--max-size SIZE]
   ssotrace scan     <file.har> [--max-size SIZE]
   ssotrace version
   ssotrace help
 
 Options:
-  --max-size SIZE  largest HAR file to read, e.g. 512MiB or 1GiB (default 256MiB)
+  --max-size SIZE          largest HAR file to read, e.g. 512MiB or 1GiB (default 256MiB)
+  --clock-skew DURATION    how far apart IdP and SP clocks may be before a time
+                           check fails, e.g. 90s or 5m (default 3m)
 
 Exit codes:
   0  no FAIL findings
@@ -83,6 +87,7 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("diagnose")
 	format := fs.String("format", "text", "output format: text, json, or markdown")
 	_ = fs.Bool("no-color", false, "disable colored output")
+	skew := fs.Duration("clock-skew", diagnose.DefaultClockSkew, "how far apart IdP and SP clocks may be, e.g. 90s or 5m")
 	maxSize := addMaxSizeFlag(fs)
 
 	pos, code, done := parse(fs, args, stdout, stderr)
@@ -91,6 +96,11 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	}
 	if code, ok := requireOneFile("diagnose", pos, stderr); !ok {
 		return code
+	}
+	// An hour of "tolerance" would hide every real clock problem; past that
+	// the flag is more likely a typo (5h for 5m) than a wish.
+	if *skew < 0 || *skew > time.Hour {
+		return usageError(stderr, fmt.Sprintf("diagnose: --clock-skew must be between 0 and 1h, got %v", *skew))
 	}
 	switch *format {
 	case "text", "json", "markdown":
@@ -112,7 +122,7 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
 		return ExitUsage
 	}
-	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h)}
+	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: *skew}
 	findings := diagnose.Run(ctx, reg)
 	if err := report.JSON(stdout, findings, ctx.SAML); err != nil {
 		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)

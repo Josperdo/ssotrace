@@ -35,10 +35,12 @@ type KeyPair struct {
 // fixtures less realistic and some validators reject it outright.
 func NewKeyPair(t testing.TB, commonName string) *KeyPair {
 	t.Helper()
-	return newKeyPair(t, commonName, RefTime.AddDate(-1, 0, 0), RefTime.AddDate(1, 0, 0))
+	return NewKeyPairValid(t, commonName, RefTime.AddDate(-1, 0, 0), RefTime.AddDate(1, 0, 0))
 }
 
-func newKeyPair(t testing.TB, commonName string, notBefore, notAfter time.Time) *KeyPair {
+// NewKeyPairValid is NewKeyPair with chosen validity dates, for testing
+// expired, not-yet-valid, and soon-to-expire certificates.
+func NewKeyPairValid(t testing.TB, commonName string, notBefore, notAfter time.Time) *KeyPair {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

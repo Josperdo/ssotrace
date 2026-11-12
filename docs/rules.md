@@ -129,6 +129,20 @@ Common causes:
 How to fix:
 For an IdP rejection, check the IdP's logs and the application's registered ACS URLs. Otherwise capture again from the very start with "Preserve log" on.
 
+### SAML006 — Assertion delivered outside its validity window
+Severity: FAIL (WARN when within the clock-skew tolerance)
+
+What it means:
+The browser delivered the assertion before its `NotBefore` time or after its `NotOnOrAfter` time. ssotrace checks the assertion's `Conditions` and each bearer `SubjectConfirmationData` `NotOnOrAfter`, against the time the browser sent the Response (from the HAR, so from the user's clock). If the assertion is outside the window by less than the clock-skew tolerance (default 3 minutes, set with `--clock-skew`), the finding is a WARN: the SP probably accepts it today, but only just. When the assertion's `IssueInstant` is later than the time the browser sent it, ssotrace reports the minimum clock difference, since an assertion cannot be issued after it was delivered. An unreadable timestamp is a WARN.
+
+Common causes:
+- The IdP's or SP's clock is wrong (no NTP).
+- The user waited a long time between the IdP issuing the assertion and the browser posting it.
+- The clock on the user's machine is wrong, which shifts every HAR timestamp.
+
+How to fix:
+Synchronize the IdP and SP clocks with NTP. If the clocks are right and logins are slow, lengthen the assertion lifetime in the IdP.
+
 ### SAML007 — Assertion is not signed
 Severity: FAIL
 
@@ -154,6 +168,19 @@ Common causes:
 
 How to fix:
 Capture again directly from the browser. If it still fails, compare the IdP's current signing certificate with the one in the finding.
+
+### SAML009 — IdP signing certificate expired or expiring
+Severity: WARN
+
+What it means:
+The certificate embedded in a signature was expired or not yet valid when the message was sent, or expires within 30 days of it. Each certificate is reported once. It is a WARN because SPs differ: many pin the certificate and ignore its dates, while others reject an expired one.
+
+Common causes:
+- The IdP's signing certificate reached the end of its life and has not been rolled over.
+- A clock on the IdP or the user's machine is wrong (for "not yet valid").
+
+How to fix:
+Create the new signing certificate in the IdP and give it, or the IdP's updated metadata, to the SP before switching the IdP over. Many SPs accept two certificates at once, which allows a rollover without downtime.
 
 ### SAML010 — Weak signature algorithm
 Severity: WARN
