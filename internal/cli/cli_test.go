@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -469,8 +470,13 @@ func TestRedactEndToEnd(t *testing.T) {
 		t.Fatalf("redact exit %d: %s", code, errOut)
 	}
 	info, err := os.Stat(out)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("output stat = %v, %v; want 0600", info, err)
+	if err != nil {
+		t.Fatalf("output missing: %v", err)
+	}
+	// 0600 is a Unix permission; on Windows the file inherits the folder's
+	// access-control list instead.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("output permissions = %o, want 600", info.Mode().Perm())
 	}
 	if now, _ := os.ReadFile(in); !bytes.Equal(now, original) {
 		t.Error("input file changed")

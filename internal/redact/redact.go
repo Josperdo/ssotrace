@@ -51,11 +51,13 @@ func Redact(h *har.HAR, opts Options) (*har.HAR, error) {
 
 	out := &har.HAR{Log: har.Log{
 		Version: h.Log.Version,
-		Creator: h.Log.Creator,
-		Browser: h.Log.Browser,
+		Creator: har.Creator{Name: r.scrub(h.Log.Creator.Name), Version: r.scrub(h.Log.Creator.Version)},
 		Comment: opts.Comment,
 		Entries: make([]har.Entry, 0, len(h.Log.Entries)),
 	}}
+	if b := h.Log.Browser; b != nil {
+		out.Log.Browser = &har.Creator{Name: r.scrub(b.Name), Version: r.scrub(b.Version)}
+	}
 	for i := range h.Log.Entries {
 		out.Log.Entries = append(out.Log.Entries, r.entry(&h.Log.Entries[i]))
 	}
@@ -93,7 +95,7 @@ func (r *redactor) entry(e *har.Entry) har.Entry {
 	// pageref (pages are not kept: their titles are URLs), and comment
 	// (free text from whoever exported the file).
 	return har.Entry{
-		StartedDateTime: e.StartedDateTime,
+		StartedDateTime: r.scrub(e.StartedDateTime),
 		Time:            e.Time,
 		Timings:         e.Timings,
 		Request:         r.request(&e.Request),
@@ -104,10 +106,10 @@ func (r *redactor) entry(e *har.Entry) har.Entry {
 func (r *redactor) request(q *har.Request) har.Request {
 	u, pairs := r.url(q.URL)
 	out := har.Request{
-		Method:      q.Method,
+		Method:      r.scrub(q.Method),
 		URL:         u,
-		HTTPVersion: q.HTTPVersion,
-		Cookies:     redactCookies(q.Cookies),
+		HTTPVersion: r.scrub(q.HTTPVersion),
+		Cookies:     r.cookies(q.Cookies),
 		Headers:     r.headers(q.Headers),
 		QueryString: pairs,
 		HeadersSize: q.HeadersSize,
@@ -126,9 +128,9 @@ func (r *redactor) response(p *har.Response) har.Response {
 	}
 	return har.Response{
 		Status:      p.Status,
-		StatusText:  p.StatusText,
-		HTTPVersion: p.HTTPVersion,
-		Cookies:     redactCookies(p.Cookies),
+		StatusText:  r.scrub(p.StatusText),
+		HTTPVersion: r.scrub(p.HTTPVersion),
+		Cookies:     r.cookies(p.Cookies),
 		Headers:     r.headers(p.Headers),
 		Content:     r.content(&p.Content),
 		RedirectURL: redirect,
@@ -148,6 +150,14 @@ func (r *redactor) url(raw string) (string, []har.NameValue) {
 		return Redacted, []har.NameValue{}
 	}
 	u.User = nil
+	// Scheme, host, and path are kept because diagnosis compares them, but
+	// some apps put tokens or email addresses in paths (magic links,
+	// /users/alice@example.com). Those parts are scrubbed.
+	u.Host = r.scrub(u.Host)
+	u.Path, u.RawPath = r.scrub(u.Path), ""
+	// "Opaque" URLs (scheme:anything, like mailto:alice@example.com) keep
+	// everything after the colon here instead of in Path.
+	u.Opaque = r.scrub(u.Opaque)
 	query, pairs := r.query(u.RawQuery, true)
 	u.RawQuery = query
 	if u.Fragment != "" {
@@ -184,6 +194,7 @@ func (r *redactor) query(raw string, inQuery bool) (string, []har.NameValue) {
 			continue
 		}
 		red := r.param(name, val, inQuery)
+		name = r.scrub(name)
 		pairs = append(pairs, har.NameValue{Name: name, Value: red})
 		if hasEq {
 			parts = append(parts, url.QueryEscape(name)+"="+url.QueryEscape(red))
@@ -227,7 +238,7 @@ func (r *redactor) param(name, v string, inQuery bool) string {
 	case name == "id_token" || name == "access_token" || name == "logout_token":
 		return r.jwt(v)
 	case keepParams[name]:
-		return v
+		return r.scrub(v)
 	default:
 		return Redacted
 	}
@@ -276,9 +287,9 @@ func (r *redactor) headers(hs []har.NameValue) []har.NameValue {
 		v := h.Value
 		switch {
 		case name == "cookie":
-			v = redactCookieHeader(v)
+			v = r.cookieHeader(v)
 		case name == "set-cookie":
-			v = redactSetCookie(v)
+			v = r.setCookie(v)
 		case name == "authorization" || name == "proxy-authorization":
 			// Keep the scheme ("Bearer", "Basic"): it says what kind of
 			// credential was sent, which is diagnostic and not secret.
@@ -296,47 +307,52 @@ func (r *redactor) headers(hs []har.NameValue) []har.NameValue {
 				v, _ = r.url(v)
 			}
 		case keepHeaders[name]:
+			v = r.scrub(v)
 		default:
 			v = Redacted
 		}
-		out = append(out, har.NameValue{Name: h.Name, Value: v})
+		out = append(out, har.NameValue{Name: r.scrub(h.Name), Value: v})
 	}
 	return out
 }
 
-// redactCookies keeps each cookie's name and attributes (Path, Domain,
+// cookies keeps each cookie's name and attributes (Path, Domain,
 // Secure, HttpOnly, Expires), which explain session problems, and drops
 // its value, which is the credential.
-func redactCookies(cs []har.Cookie) []har.Cookie {
+func (r *redactor) cookies(cs []har.Cookie) []har.Cookie {
 	out := make([]har.Cookie, 0, len(cs))
 	for _, c := range cs {
 		c.Value = Redacted
+		c.Name, c.Path, c.Domain, c.Expires = r.scrub(c.Name), r.scrub(c.Path), r.scrub(c.Domain), r.scrub(c.Expires)
 		out = append(out, c)
 	}
 	return out
 }
 
-// redactCookieHeader turns "a=1; b=2" into "a=[redacted]; b=[redacted]".
-func redactCookieHeader(v string) string {
+// cookieHeader turns "a=1; b=2" into "a=[redacted]; b=[redacted]".
+func (r *redactor) cookieHeader(v string) string {
 	var parts []string
 	for _, p := range strings.Split(v, ";") {
 		name, _, _ := strings.Cut(strings.TrimSpace(p), "=")
 		if name != "" {
-			parts = append(parts, name+"="+Redacted)
+			parts = append(parts, r.scrub(name)+"="+Redacted)
 		}
 	}
 	return strings.Join(parts, "; ")
 }
 
-// redactSetCookie redacts the value of each cookie in a Set-Cookie header
+// setCookie redacts the value of each cookie in a Set-Cookie header
 // and keeps its attributes. Some exporters put several cookies in one
 // header separated by newlines.
-func redactSetCookie(v string) string {
+func (r *redactor) setCookie(v string) string {
 	var lines []string
 	for _, line := range strings.Split(v, "\n") {
 		attrs := strings.Split(line, ";")
 		name, _, _ := strings.Cut(strings.TrimSpace(attrs[0]), "=")
-		attrs[0] = name + "=" + Redacted
+		attrs[0] = r.scrub(name) + "=" + Redacted
+		for i := 1; i < len(attrs); i++ {
+			attrs[i] = r.scrub(attrs[i])
+		}
 		lines = append(lines, strings.Join(attrs, ";"))
 	}
 	return strings.Join(lines, "\n")
@@ -345,7 +361,7 @@ func redactSetCookie(v string) string {
 // --- bodies ---
 
 func (r *redactor) postData(p *har.PostData) *har.PostData {
-	out := &har.PostData{MimeType: p.MimeType}
+	out := &har.PostData{MimeType: r.scrub(p.MimeType)}
 	mime := strings.ToLower(p.MimeType)
 	isForm := strings.Contains(mime, "x-www-form-urlencoded") || mime == ""
 	switch {
@@ -391,7 +407,7 @@ func formParams(encoded string) []har.Param {
 // HAR004 still recognizes, because an error code is often the most useful
 // clue in the whole capture.
 func (r *redactor) content(c *har.Content) har.Content {
-	out := har.Content{Size: c.Size, MimeType: c.MimeType}
+	out := har.Content{Size: c.Size, MimeType: r.scrub(c.MimeType)}
 	if r.keepBodies {
 		out.Text, out.Encoding = c.Text, c.Encoding
 		return out
@@ -413,4 +429,27 @@ func (r *redactor) content(c *har.Content) har.Content {
 	}
 	out.Text = "[ssotrace: body removed by redaction; IdP error codes: " + strings.Join(codes, " ") + "]"
 	return out
+}
+
+// scrub cleans a string the redactor otherwise keeps verbatim (a URL path,
+// a safe header value, a parameter name). It applies the scanner's two
+// free-text detectors as removers: JWTs become [redacted], and email
+// addresses get the same salted mask as NameIDs. Without this, a value in a
+// kept field would make the leak scan stop the write.
+func (r *redactor) scrub(s string) string {
+	if s == "" {
+		return s
+	}
+	s = jwtPattern.ReplaceAllStringFunc(s, func(m string) string {
+		if strings.HasSuffix(m, "."+jwtSigMarker) {
+			return m // already redacted by us
+		}
+		return Redacted
+	})
+	return emailPattern.ReplaceAllStringFunc(s, func(m string) string {
+		if strings.HasSuffix(strings.ToLower(m), "@"+maskDomain) {
+			return m
+		}
+		return r.mask(m)
+	})
 }

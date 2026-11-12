@@ -1,0 +1,92 @@
+# Release configuration. The release workflow runs this on a v* tag;
+# `goreleaser release --snapshot --clean` builds everything locally
+# without publishing.
+version: 2
+
+project_name: ssotrace
+
+builds:
+  - id: ssotrace
+    main: ./cmd/ssotrace
+    binary: ssotrace
+    env:
+      # One static binary with no system library dependencies.
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .CommitDate }}
+    # File times come from the commit, not the clock, so the same tag
+    # always produces byte-identical archives.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# A software bill of materials for each archive, so users can see exactly
+# which modules (and versions) are inside the binary.
+sboms:
+  - artifacts: archive
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# A Homebrew cask in Josperdo/homebrew-tap, so `brew install
+# josperdo/tap/ssotrace` works. Casks are Homebrew's format for prebuilt
+# binaries (formulas are for building from source).
+homebrew_casks:
+  - name: ssotrace
+    repository:
+      owner: Josperdo
+      name: homebrew-tap
+      # A fine-grained token limited to the tap repository (contents: write),
+      # stored as the HOMEBREW_TAP_TOKEN secret. The default GITHUB_TOKEN
+      # can only write to this repository, not the tap.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/Josperdo/ssotrace
+    description: Diagnose failed SSO logins from HAR files and redact them for safe sharing
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "ssotrace {{ .Tag }}"
+    # The binary is not signed by Apple, and casks mark downloads as
+    # quarantined, which makes macOS refuse to run it. Clearing the flag on
+    # this one binary is the standard approach for unsigned open-source
+    # tools: whoever runs `brew install` has already chosen to trust the tap.
+    hooks:
+      post:
+        install_steps: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ssotrace"]
+          end
+
+release:
+  github:
+    owner: Josperdo
+    name: ssotrace
+  footer: |
+    **Verify a download:** `sha256sum -c checksums.txt --ignore-missing`
+
+    **Never share an unredacted HAR file.** Run `ssotrace redact` first.

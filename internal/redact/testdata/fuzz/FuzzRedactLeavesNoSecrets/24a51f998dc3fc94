@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"log\":{\"entries\":[{\"request\":{\"000000\":\"000\",\"url\":\"A0000:eyJ00000.eyJ00000.\"}}]}}")

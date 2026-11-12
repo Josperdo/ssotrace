@@ -3,15 +3,55 @@
 [![CI](https://github.com/Josperdo/ssotrace/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Josperdo/ssotrace/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/Josperdo/ssotrace)](https://github.com/Josperdo/ssotrace/commits/main)
+[![Release](https://img.shields.io/github/v/release/Josperdo/ssotrace)](https://github.com/Josperdo/ssotrace/releases/latest)
 
 Diagnose failed SSO logins from a HAR file, and redact it so it's safe to share.
 
-Status: pre-release, under active development.
+ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL, clock skew, rotated or expired certificates, missing or invalid signatures, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
+
+OAuth 2.0 and OpenID Connect traffic is recognized in captures but not diagnosed.
+
+![ssotrace diagnosing a failed login, scanning the capture for secrets, and redacting it](docs/demo.gif)
 
 > [!CAUTION]
-> **HAR files contain live session tokens.** A browser HAR export includes cookies, bearer tokens, SAML assertions, and OAuth codes that can let someone sign in as you. Never share one unredacted.
+> **HAR files contain live session tokens.** A browser HAR export includes cookies, bearer tokens, SAML assertions, and OAuth codes that can let someone sign in as you. Never share one unredacted: run `ssotrace redact` first, and if an unredacted HAR has already been shared, sign the affected users out and revoke their sessions.
 
-## Build from source
+## Install
+
+**Homebrew** (macOS):
+
+```sh
+brew install josperdo/tap/ssotrace
+```
+
+On Linux and Windows, use a prebuilt binary or `go install`.
+
+**Prebuilt binaries** for macOS, Linux, and Windows (amd64 and arm64) are on the [releases page](https://github.com/Josperdo/ssotrace/releases/latest), with SHA-256 checksums and an SBOM. The binaries are not code-signed, so on first run macOS may say it "cannot verify the developer" (right-click the file, choose **Open**, or install with Homebrew instead), and Windows SmartScreen may show "Windows protected your PC" (choose **More info → Run anyway**). Check the download against `checksums.txt` first.
+
+**With Go:**
+
+```sh
+go install github.com/Josperdo/ssotrace/cmd/ssotrace@latest
+```
+
+## Quick start
+
+Capture the failing sign-in: open the browser's developer tools, go to the **Network** tab, turn on **Preserve log** (Firefox: **Persist Logs**), sign in from the start, then right-click the request list and save it as a HAR file.
+
+```sh
+# 1. Why did the login fail?
+ssotrace diagnose login.har
+
+# 2. What secrets does this file hold?
+ssotrace scan login.har
+
+# 3. Make a copy that is safe to attach to a ticket.
+ssotrace redact login.har -o login.redacted.har
+```
+
+`diagnose` exits `1` when it finds a failure, so it also works in scripts and CI. Add `--format markdown` to paste the result into a ticket.
+
+### Build from source
 
 Requires Go (see `go.mod` for the version) and `make`.
 

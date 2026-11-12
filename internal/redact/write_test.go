@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,9 +16,10 @@ func TestWriteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	symlink := filepath.Join(dir, "link.har")
-	if err := os.Symlink(in, symlink); err != nil {
-		t.Fatal(err)
-	}
+	// Windows allows symlinks only with Developer Mode or admin rights; where
+	// that is missing, the symlink case is skipped and the hard-link case
+	// still covers "a second name for the input".
+	haveSymlink := os.Symlink(in, symlink) == nil
 	hardlink := filepath.Join(dir, "hard.har")
 	if err := os.Link(in, hardlink); err != nil {
 		t.Fatal(err)
@@ -43,6 +45,9 @@ func TestWriteFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.out == symlink && !haveSymlink {
+				t.Skip("cannot create symlinks here")
+			}
 			err := WriteFile(tt.out, in, []byte("redacted"), tt.force)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -57,10 +62,7 @@ func TestWriteFile(t *testing.T) {
 			if string(got) != "redacted" {
 				t.Errorf("content = %q", got)
 			}
-			info, _ := os.Stat(tt.out)
-			if perm := info.Mode().Perm(); perm != 0o600 {
-				t.Errorf("permissions = %o, want 600", perm)
-			}
+			checkOwnerOnly(t, tt.out)
 		})
 	}
 
@@ -91,5 +93,22 @@ func TestWriteFileFailureLeavesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(out); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("output exists after a failed write")
+	}
+}
+
+// checkOwnerOnly asserts 0600 permissions where that concept exists. On
+// Windows, Go reports only a read-only bit; access there is governed by
+// the folder's access-control list, which the file inherits.
+func checkOwnerOnly(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("permissions = %o, want 600", perm)
 	}
 }

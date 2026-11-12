@@ -1,0 +1,7 @@
+# Check out text files with LF line endings on every OS. Golden files are
+# compared byte for byte, and Git on Windows would otherwise turn their
+# LF into CRLF and fail every comparison.
+* text=auto eol=lf
+
+# Generated assets that must never be touched.
+*.gif binary

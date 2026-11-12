@@ -14,3 +14,6 @@ lab/captures/
 
 # Local AI assistant instructions; not part of the public repo
 CLAUDE.md
+
+# Output of the README demo recording
+testdata/demo/shareable.har

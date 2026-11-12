@@ -9,19 +9,28 @@ on:
 permissions:
   contents: read
 
+# Every action is pinned to a full commit SHA, with the release it came
+# from in a comment. A tag like v7 can be moved to different code by
+# whoever controls that repository; a SHA cannot. Dependabot keeps both
+# the SHA and the comment up to date.
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
-        # macOS added to matrix when repo goes public
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # Bash on every OS (Git Bash on Windows), so one set of commands
+        # works everywhere. PowerShell cannot parse "CGO_ENABLED=0 go ...".
+        shell: bash
     steps:
-      - uses: actions/checkout@v7 # TODO: pin to commit SHA before public release
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v7 # TODO: pin to commit SHA before public release
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -29,17 +38,28 @@ jobs:
         run: go build ./...
 
       - name: Build static binary (no cgo)
-        run: CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/ssotrace
+        run: CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/ssotrace-ci" ./cmd/ssotrace
 
+      # The race detector needs cgo on Windows; the other two OSes cover it.
       - name: Test
-        run: go test -race ./...
+        run: go test ${{ matrix.os != 'windows-latest' && '-race' || '' }} ./...
 
+      # Linting and the vulnerability scan give the same answer on every
+      # OS, so they run once.
       - name: Lint
-        uses: golangci/golangci-lint-action@v9 # TODO: pin to commit SHA before public release
+        if: matrix.os == 'ubuntu-latest'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.15.0
 
       - name: Vulnerability check
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
+
+      # Short fuzz runs on every push catch crashes the seed corpus misses.
+      # Longer runs are done locally with `make fuzz FUZZTIME=10m`.
+      - name: Fuzz (smoke)
+        if: matrix.os == 'ubuntu-latest'
+        run: make fuzz FUZZTIME=15s

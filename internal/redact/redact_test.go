@@ -266,3 +266,23 @@ func TestRedactKeepBodies(t *testing.T) {
 		t.Error("bodies with an email were kept but the scan found nothing")
 	}
 }
+
+// TestRedactScrubsKeptFields covers the places the fuzzer found: values
+// the redactor keeps verbatim (URL paths, opaque URLs, safe headers, cookie
+// attributes) must still lose any JWT or email address inside them.
+func TestRedactScrubsKeptFields(t *testing.T) {
+	e := testutil.GetEntry(t, "https://app.example.com/users/alice@example.com/magic/"+fakeJWT, testutil.RefTime, 200)
+	e.Request.Headers = []har.NameValue{{Name: "Origin", Value: "https://alice@example.com"}}
+	e.Response.Headers = []har.NameValue{{Name: "Set-Cookie", Value: "s=1; Domain=" + fakeJWT}}
+	mailto := testutil.GetEntry(t, "https://app.example.com/", testutil.RefTime, 302)
+	mailto.Response.RedirectURL = "mailto:alice@example.com"
+
+	out := redacted(t, testutil.NewHAR(e, mailto), Options{})
+	if leaks := Scan(out); len(leaks) != 0 {
+		t.Fatalf("leaks after redaction: %+v", leaks)
+	}
+	got := out.Log.Entries[0].Request.URL
+	if !strings.Contains(got, "/users/u-") || !strings.Contains(got, "@"+maskDomain) || !strings.HasPrefix(got, "https://app.example.com/") {
+		t.Errorf("URL = %q, want host kept and the email in the path masked", got)
+	}
+}
