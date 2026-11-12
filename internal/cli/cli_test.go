@@ -2,10 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Josperdo/ssotrace/internal/testutil"
 )
 
 // Placeholders in test args, replaced with real temp file paths.
@@ -83,20 +86,20 @@ func TestRun(t *testing.T) {
 		{
 			name:       "diagnose flags before file",
 			args:       []string{"diagnose", "--format", "json", "--no-color", validHAR},
-			wantCode:   ExitUsage,
-			wantStderr: "diagnose: not implemented yet",
+			wantCode:   ExitFail, // empty capture: HAR001 fails
+			wantStdout: `"schema_version": 1`,
 		},
 		{
 			name:       "diagnose flags after file",
 			args:       []string{"diagnose", validHAR, "--format", "json"},
-			wantCode:   ExitUsage,
-			wantStderr: "diagnose: not implemented yet",
+			wantCode:   ExitFail,
+			wantStdout: `"rule_id": "HAR001"`,
 		},
 		{
 			name:       "diagnose flags on both sides of file",
 			args:       []string{"diagnose", "--no-color", validHAR, "--format=markdown"},
 			wantCode:   ExitUsage,
-			wantStderr: "diagnose: not implemented yet",
+			wantStderr: "diagnose --format markdown: not implemented yet",
 		},
 		{
 			name:       "double dash makes dash-prefixed name a file",
@@ -261,5 +264,55 @@ func checkStream(t *testing.T, name, got, want string) {
 	}
 	if !strings.Contains(got, want) {
 		t.Errorf("%s = %q, want it to contain %q", name, got, want)
+	}
+}
+
+// TestDiagnoseJSONSAMLFlow runs the whole pipeline on a generated, signed
+// SP-initiated login and checks the flow model in the JSON output.
+func TestDiagnoseJSONSAMLFlow(t *testing.T) {
+	login := testutil.NewSAMLLogin(t, testutil.DefaultAuthnRequestOptions(), testutil.DefaultResponseOptions())
+	path := writeFile(t, t.TempDir(), "login.har", string(testutil.MarshalHAR(t, login.HAR)))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"diagnose", path, "--format", "json"}, &stdout, &stderr, BuildInfo{})
+	if code != ExitOK {
+		t.Fatalf("exit code = %d, stderr = %q", code, stderr.String())
+	}
+
+	var out struct {
+		SchemaVersion int `json:"schema_version"`
+		SAML          struct {
+			Flows []struct {
+				Request  struct{ Binding string } `json:"request"`
+				Response struct {
+					Binding string
+					Message struct {
+						Response struct {
+							Assertions []struct {
+								Verified bool
+								Subject  struct {
+									NameID struct{ Value string } `json:"name_id"`
+								}
+							}
+						}
+					}
+				} `json:"response"`
+				IDPInitiated bool `json:"idp_initiated"`
+			}
+		}
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if out.SchemaVersion != 1 || len(out.SAML.Flows) != 1 {
+		t.Fatalf("schema %d, flows %d", out.SchemaVersion, len(out.SAML.Flows))
+	}
+	f := out.SAML.Flows[0]
+	if f.Request.Binding != "HTTP-Redirect" || f.Response.Binding != "HTTP-POST" || f.IDPInitiated {
+		t.Errorf("flow = %+v", f)
+	}
+	as := f.Response.Message.Response.Assertions
+	if len(as) != 1 || !as[0].Verified || as[0].Subject.NameID.Value != "alice@example.com" {
+		t.Errorf("assertions = %+v", as)
 	}
 }

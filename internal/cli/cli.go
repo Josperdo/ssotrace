@@ -12,7 +12,10 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/Josperdo/ssotrace/internal/diagnose"
+	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
+	"github.com/Josperdo/ssotrace/internal/report"
 )
 
 // Exit codes are part of the public contract: scripts and CI jobs branch on
@@ -94,10 +97,31 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	default:
 		return usageError(stderr, fmt.Sprintf("diagnose: invalid --format %q (want text, json, or markdown)", *format))
 	}
-	if _, ok := loadHAR(pos[0], int64(*maxSize), stderr); !ok {
+	h, ok := loadHAR(pos[0], int64(*maxSize), stderr)
+	if !ok {
 		return ExitUsage
 	}
-	return notImplemented(stderr, "diagnose")
+	if *format != "json" {
+		return notImplemented(stderr, "diagnose --format "+*format)
+	}
+
+	reg, err := diagnose.DefaultRules()
+	if err != nil {
+		// A broken built-in registry is a programming error, not bad input;
+		// report it plainly rather than panicking.
+		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+		return ExitUsage
+	}
+	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h)}
+	findings := diagnose.Run(ctx, reg)
+	if err := report.JSON(stdout, findings, ctx.SAML); err != nil {
+		_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+		return ExitUsage
+	}
+	if diagnose.HasFailures(findings) {
+		return ExitFail
+	}
+	return ExitOK
 }
 
 func runRedact(args []string, stdout, stderr io.Writer) int {

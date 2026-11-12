@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
 )
 
@@ -86,6 +87,9 @@ type Finding struct {
 type Context struct {
 	// HAR is the loaded capture. Rules must tolerate nil and report nothing.
 	HAR *har.HAR
+	// SAML is every SAML message in the capture, decoded and paired into
+	// flows. Rules must tolerate nil.
+	SAML *flow.SAMLTrace
 }
 
 // Rule is one diagnostic check. ID must be stable and never reused.
