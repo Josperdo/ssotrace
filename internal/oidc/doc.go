@@ -1,4 +1,5 @@
-// Package oidc is a placeholder for OAuth 2.0 and OpenID Connect parsing.
-// It contains no code in this version: OAuth and OIDC traffic is only
-// recognized (package flow), not parsed or diagnosed.
+// Package oidc parses OAuth 2.0 and OpenID Connect artifacts found in a
+// capture. It decodes JWTs (Parse) using only the standard library.
+// Decoding is not verification: a parsed token's claims are what the token
+// says about itself.
 package oidc

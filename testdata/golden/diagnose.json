@@ -3,7 +3,7 @@
   "ssotrace_version": "v0.0.0-test",
   "file": "login.har",
   "summary": {
-    "fail": 2,
+    "fail": 3,
     "warn": 2,
     "info": 2,
     "pass": 2
@@ -102,6 +102,20 @@
       "title": "Signer not checked against a trusted certificate",
       "detail": "",
       "fix": "To check who signed, run again with --idp-cert."
+    },
+    {
+      "rule_id": "OIDC001",
+      "oidc_flow": 0,
+      "severity": "fail",
+      "title": "Authorization server returned an error",
+      "detail": "The callback carried an OAuth error instead of an authorization code.",
+      "evidence": [
+        {
+          "label": "error",
+          "value": "access_denied"
+        }
+      ],
+      "fix": "Check the authorization server's logs at this time."
     }
   ],
   "saml": {
@@ -213,6 +227,68 @@
           "binding": ""
         },
         "idp_initiated": false
+      }
+    ]
+  },
+  "oidc": {
+    "flows": [
+      {
+        "authorization": {
+          "entry": 12,
+          "time": "2026-01-15T10:04:00Z",
+          "method": "GET",
+          "url": "https://idp.example.com/authorize",
+          "http_status": 0,
+          "params": {
+            "client_id": "web-app",
+            "response_type": "code",
+            "redirect_uri": "https://app.example.org/callback",
+            "scope": "openid profile",
+            "has_nonce": false,
+            "has_code_challenge": false
+          }
+        },
+        "callback": {
+          "entry": 13,
+          "time": "2026-01-15T10:04:05Z",
+          "method": "GET",
+          "url": "https://app.example.org/callback",
+          "http_status": 0,
+          "delivery": "query",
+          "params": {
+            "error": "access_denied"
+          }
+        }
+      },
+      {
+        "authorization": {
+          "entry": 14,
+          "time": "2026-01-15T10:05:00Z",
+          "method": "GET",
+          "url": "https://idp.example.com/authorize",
+          "http_status": 0,
+          "params": {
+            "client_id": "web-app",
+            "response_type": "token",
+            "redirect_uri": "https://app.example.org/callback",
+            "scope": "profile",
+            "has_nonce": false,
+            "has_code_challenge": false
+          }
+        }
+      },
+      {
+        "callback": {
+          "entry": 15,
+          "time": "2026-01-15T10:06:00Z",
+          "method": "POST",
+          "url": "https://app.example.org/callback",
+          "http_status": 0,
+          "delivery": "form_post",
+          "params": {
+            "code_preview": "[redacted] (4 chars)"
+          }
+        }
       }
     ]
   }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Josperdo/ssotrace/internal/diagnose"
 	"github.com/Josperdo/ssotrace/internal/flow"
+	"github.com/Josperdo/ssotrace/internal/oidc"
 	"github.com/Josperdo/ssotrace/internal/saml"
 )
 
@@ -47,10 +48,34 @@ func sampleReport() *Report {
 		{Request: req(9, "2026-01-15T10:03:00Z"), Response: resp(11, "2026-01-15T10:03:01Z")},
 	}}
 
+	authz := func(entry int, scope, rt, at string) *flow.OIDCAuthorization {
+		return &flow.OIDCAuthorization{
+			Sent:   flow.Sent{Entry: entry, Method: "GET", URL: "https://idp.example.com/authorize", Time: at},
+			Params: &oidc.AuthorizationRequest{ClientID: "web-app", ResponseType: rt, Scope: scope, RedirectURI: "https://app.example.org/callback"},
+		}
+	}
+	oidcTrace := &flow.OIDCTrace{Flows: []flow.OIDCFlow{
+		{
+			Authorization: authz(12, "openid profile", "code", "2026-01-15T10:04:00Z"),
+			Callback: &flow.OIDCCallback{
+				Sent:     flow.Sent{Entry: 13, Method: "GET", URL: "https://app.example.org/callback", Time: "2026-01-15T10:04:05Z"},
+				Delivery: flow.DeliveryQuery,
+				Params:   &oidc.Callback{Error: "access_denied"},
+			},
+		},
+		{Authorization: authz(14, "profile", "token", "2026-01-15T10:05:00Z")},
+		{Callback: &flow.OIDCCallback{
+			Sent:     flow.Sent{Entry: 15, Method: "POST", URL: "https://app.example.org/callback", Time: "2026-01-15T10:06:00Z"},
+			Delivery: flow.DeliveryFormPost,
+			Params:   &oidc.Callback{CodePreview: "[redacted] (4 chars)"},
+		}},
+	}}
+
 	return &Report{
 		File:    "login.har",
 		Version: "v0.0.0-test",
 		SAML:    trace,
+		OIDC:    oidcTrace,
 		Findings: []diagnose.Finding{
 			{RuleID: "HAR001", Severity: diagnose.Pass, Title: "SSO traffic found"},
 			{RuleID: "HAR004", Severity: diagnose.Warn, Title: "IdP error code found",
@@ -77,6 +102,10 @@ func sampleReport() *Report {
 				Evidence: []diagnose.Evidence{{Label: "Signature algorithm", Value: "RSA-SHA1"}}},
 			{RuleID: "SAML013", Severity: diagnose.Info, Title: "Signer not checked against a trusted certificate",
 				Fix: "To check who signed, run again with --idp-cert."},
+			{RuleID: "OIDC001", OIDCFlow: flowRef(0), Severity: diagnose.Fail, Title: "Authorization server returned an error",
+				Detail:   "The callback carried an OAuth error instead of an authorization code.",
+				Fix:      "Check the authorization server's logs at this time.",
+				Evidence: []diagnose.Evidence{{Label: "error", Value: "access_denied"}}},
 		},
 	}
 }
@@ -160,7 +189,7 @@ func TestHostileValuesAreInert(t *testing.T) {
 		SchemaVersion int    `json:"schema_version"`
 		Summary       Counts `json:"summary"`
 	}
-	if err := json.Unmarshal(js.Bytes(), &back); err != nil || back.SchemaVersion != 1 || back.Summary.Fail != 2 {
+	if err := json.Unmarshal(js.Bytes(), &back); err != nil || back.SchemaVersion != 1 || back.Summary.Fail != 3 {
 		t.Errorf("json = %+v, err %v", back, err)
 	}
 }
@@ -192,7 +221,7 @@ func TestWrap(t *testing.T) {
 func TestEmptyReport(t *testing.T) {
 	r := &Report{File: "empty.har"}
 	var b bytes.Buffer
-	if err := Text(&b, r, TextOptions{}); err != nil || !strings.Contains(b.String(), "no SAML logins found") {
+	if err := Text(&b, r, TextOptions{}); err != nil || !strings.Contains(b.String(), "no SAML or OAuth/OIDC logins found") {
 		t.Errorf("text = %q, err %v", b.String(), err)
 	}
 	b.Reset()

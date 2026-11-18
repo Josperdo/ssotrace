@@ -22,6 +22,7 @@ import (
 	"github.com/Josperdo/ssotrace/internal/diagnose"
 	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
+	"github.com/Josperdo/ssotrace/internal/oidc"
 	"github.com/Josperdo/ssotrace/internal/redact"
 	"github.com/Josperdo/ssotrace/internal/report"
 )
@@ -47,6 +48,7 @@ const usageText = `ssotrace diagnoses failed SSO logins from a HAR file and reda
 Usage:
   ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
                     [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
+                    [--jwks FILE] [--fetch-jwks URL]
   ssotrace redact   <file.har> -o <out.har> [--force] [--keep-bodies] [--max-size SIZE]
   ssotrace scan     <file.har> [--format text|json] [--no-color] [--max-size SIZE]
   ssotrace version
@@ -63,6 +65,10 @@ Options:
                            without it, signatures prove integrity, not who signed
   --sp-entity-id ID        the SP's entity ID, used to check the audience when the
                            capture has no AuthnRequest (IdP-initiated logins)
+  --jwks FILE              JWK Set file with the IdP's public token signing keys,
+                           used to verify OIDC token signatures
+  --fetch-jwks URL         download the JWK Set from URL (the IdP's jwks_uri);
+                           the only network call ssotrace makes, and only when asked
 
 Exit codes:
   0  no FAIL findings
@@ -103,6 +109,8 @@ func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	noColor := fs.Bool("no-color", false, "disable colored output")
 	skew := fs.Duration("clock-skew", diagnose.DefaultClockSkew, "how far apart IdP and SP clocks may be, e.g. 90s or 5m")
 	idpCert := fs.String("idp-cert", "", "PEM file with the IdP signing certificate(s) you trust")
+	jwksFile := fs.String("jwks", "", "JWK Set file with the IdP's public token signing keys")
+	fetchJWKSURL := fs.String("fetch-jwks", "", "URL of the IdP's JWK Set to download (the only network call ssotrace makes)")
 	spEntityID := fs.String("sp-entity-id", "", "the SP's entity ID, for checking IdP-initiated logins")
 	maxSize := addMaxSizeFlag(fs)
 
@@ -131,6 +139,21 @@ func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 			return ExitUsage
 		}
 	}
+	var fileKeys, fetchedKeys *oidc.KeySet
+	if *jwksFile != "" {
+		var err error
+		if fileKeys, err = loadJWKS(*jwksFile); err != nil {
+			_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+			return ExitUsage
+		}
+	}
+	if *fetchJWKSURL != "" {
+		var err error
+		if fetchedKeys, err = fetchJWKS(*fetchJWKSURL, info.Version); err != nil {
+			_, _ = fmt.Fprintf(stderr, "ssotrace: %v\n", err)
+			return ExitUsage
+		}
+	}
 	h, ok := loadHAR(pos[0], int64(*maxSize), stderr)
 	if !ok {
 		return ExitUsage
@@ -145,8 +168,10 @@ func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 	ctx := diagnose.Context{
 		HAR:        h,
 		SAML:       flow.TraceSAML(h),
+		OIDC:       flow.TraceOIDC(h),
 		ClockSkew:  *skew,
 		IDPCerts:   certs,
+		JWKS:       mergeKeySets(fileKeys, fetchedKeys),
 		SPEntityID: strings.TrimSpace(*spEntityID),
 	}
 	findings := diagnose.Run(ctx, reg)
@@ -155,6 +180,7 @@ func runDiagnose(args []string, stdout, stderr io.Writer, info BuildInfo) int {
 		Version:  info.Version,
 		Findings: findings,
 		SAML:     ctx.SAML,
+		OIDC:     ctx.OIDC,
 	}
 	switch *format {
 	case "json":
@@ -434,7 +460,7 @@ func diagnosisComment(h *har.HAR, version string) string {
 	if err != nil {
 		return b.String()
 	}
-	findings := diagnose.Run(diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: diagnose.DefaultClockSkew}, reg)
+	findings := diagnose.Run(diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), OIDC: flow.TraceOIDC(h), ClockSkew: diagnose.DefaultClockSkew}, reg)
 	var fails, warns []string
 	for _, f := range findings {
 		switch f.Severity {

@@ -235,6 +235,14 @@ func (r *redactor) param(name, v string, inQuery bool) string {
 		return Redacted
 	case name == "error_description":
 		return keepCodesOnly(v)
+	case name == "state" || name == "nonce" || name == "code":
+		// These bind one sign-in together: state and nonce tie a callback
+		// and an ID token to their request, and the code ties a callback to
+		// its token request. A salted mask keeps equal values equal, so
+		// OIDC002, OIDC004, and flow pairing reach the same verdict on the
+		// redacted file, and the discarded salt makes the mask worthless to
+		// anyone else.
+		return r.mask(v)
 	case name == "id_token" || name == "access_token" || name == "logout_token":
 		return r.jwt(v)
 	case keepParams[name]:
@@ -245,10 +253,15 @@ func (r *redactor) param(name, v string, inQuery bool) string {
 }
 
 // keepCodesOnly reduces free text to the IdP error codes in it, which is
-// what HAR004 needs; the rest can name the user or their tenant.
+// what HAR004 needs, plus a fixed marker if it complained about the
+// redirect_uri, which is what OIDC003 needs. The rest can name the user or
+// their tenant.
 func keepCodesOnly(v string) string {
 	c := &har.Content{MimeType: "text/plain", Text: v}
 	codes := diagnose.ErrorCodesInBody(c)
+	if diagnose.MentionsRedirectURIError(v) {
+		codes = append(codes, redirectURIMarker)
+	}
 	if len(codes) == 0 {
 		return Redacted
 	}
@@ -412,7 +425,14 @@ func (r *redactor) content(c *har.Content) har.Content {
 		out.Text, out.Encoding = c.Text, c.Encoding
 		return out
 	}
+	if text, ok := r.tokenResponse(c); ok {
+		out.Text = text
+		return out
+	}
 	codes := diagnose.ErrorCodesInBody(c)
+	if diagnose.RedirectURIErrorInBody(c) {
+		codes = append(codes, redirectURIMarker)
+	}
 	if len(codes) == 0 {
 		return out
 	}

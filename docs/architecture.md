@@ -3,7 +3,8 @@
 ssotrace is a pipeline. Each stage is one package under `internal/`, and data flows in one direction.
 
 ```
-HAR file → har.Load (bounded) → flow.TraceSAML (decode + correlate) → diagnose.Run (rules) → report.Render (text|json|md)
+HAR file → har.Load (bounded) → flow.TraceSAML + flow.TraceOIDC (decode + correlate) → diagnose.Run (rules) → report.Render (text|json|md)
+                                                     ↘|json|md)
                                                      ↘ redact.Apply → redact.Scan (verify) → write 0600
 ```
 
@@ -15,10 +16,10 @@ HAR file → har.Load (bounded) → flow.TraceSAML (decode + correlate) → diag
 | `internal/cli` | Parses subcommands and flags and maps results to exit codes (`0` no failures, `1` failures found, `2` usage or input error). |
 | `internal/har` | HAR 1.2 types, a streaming loader that enforces size limits on untrusted input, and header, query, and form lookups that smooth over differences between browser exports. |
 | `internal/saml` | Decodes SAML messages from the POST and Redirect bindings (with an inflate cap), parses them with a depth limit and no DOCTYPE, models AuthnRequests and Responses, and verifies enveloped signatures. Signed content is read only from the element the validator returns. |
-| `internal/oidc` | Placeholder for OAuth 2.0 and OpenID Connect parsing. Empty in this version: OAuth and OIDC traffic is recognized by `internal/flow` but not parsed or diagnosed. |
-| `internal/flow` | Recognizes which HAR entries carry SAML or OAuth/OIDC messages, records where and when each SAML message was sent, and pairs AuthnRequests with Responses by `InResponseTo`. |
+| `internal/oidc` | Models OAuth/OIDC authorization requests, callbacks, and token calls, and decodes JWTs (header and the registered/OIDC claims) with the standard library only, without verifying them. Codes, `state`, `nonce`, and tokens are kept for comparison but serialized only as previews or presence flags. |
+| `internal/flow` | Recognizes which HAR entries carry SAML or OAuth/OIDC messages and records where and when each was sent. Pairs SAML AuthnRequests with Responses by `InResponseTo`, and OAuth/OIDC authorization requests with callbacks by `state` (falling back to `redirect_uri`) and callbacks with token calls by authorization code. Fragment callbacks are read from the redirect that carried them. |
 | `internal/diagnose` | The rule engine: severities, findings, the `Rule` interface, and the rule registry. |
-| `internal/redact` | Builds a shareable copy of a HAR from an allowlist (names kept, secret values removed, SAML identities masked with salted hashes, signatures replaced with a record of their result), then proves it clean with the same leak scanner `ssotrace scan` uses. Writes atomically with `0600` permissions and never over the input. |
+| `internal/redact` | Builds a shareable copy of a HAR from an allowlist (names kept, secret values removed, SAML identities and OAuth codes, `state`, and `nonce` masked with salted hashes, signatures replaced with a record of their result, token endpoint responses filtered rather than dropped), then proves it clean with the same leak scanner `ssotrace scan` uses. Writes atomically with `0600` permissions and never over the input. |
 | `internal/report` | Renders findings and flows. JSON output carries `"schema_version": 1`. |
 | `internal/kb` | Placeholder for explanations of vendor error codes. Empty in this version: HAR004 reports the raw codes. |
 | `internal/secret` | Produces safe previews (short prefix plus length) of secret values for display. |

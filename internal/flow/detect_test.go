@@ -32,6 +32,7 @@ func TestDetect(t *testing.T) {
 
 		// OIDC / OAuth
 		{"authorization request", get("https://idp.example.org/authorize?client_id=c&response_type=code&state=s"), OIDC},
+		{"authorization request as form POST", post("https://idp.example.org/authorize", "client_id=c&response_type=code&state=s"), OIDC},
 		{"query callback", get("https://app.example.com/cb?code=abc&state=s"), OIDC},
 		{"error callback", get("https://app.example.com/cb?error=access_denied&state=s"), OIDC},
 		{"form_post callback", post("https://app.example.com/cb", "id_token=abc&state=s"), OIDC},

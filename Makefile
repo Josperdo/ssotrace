@@ -13,7 +13,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.dat
 
 LAB_COMPOSE := docker compose -f lab/docker-compose.yml --env-file lab/.env
 
-.PHONY: help build test golden fuzz demo demo-docker lint vuln fmt tidy check hooks lab-up lab-down clean
+.PHONY: help build test golden fuzz demo demo-docker lint vuln fmt tidy check hooks lab-up lab-down lab-oidc clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -35,7 +35,7 @@ golden: ## Rewrite golden files in testdata/golden (review the diff after)
 
 # Each fuzz target as "package:Target". go test can fuzz only one target per
 # run, so they run one after another.
-FUZZ_TARGETS := ./internal/har:FuzzDecode ./internal/saml:FuzzParse ./internal/saml:FuzzDecodeRedirect ./internal/diagnose:FuzzDiagnose ./internal/redact:FuzzRedactLeavesNoSecrets
+FUZZ_TARGETS := ./internal/har:FuzzDecode ./internal/saml:FuzzParse ./internal/saml:FuzzDecodeRedirect ./internal/diagnose:FuzzDiagnose ./internal/redact:FuzzRedactLeavesNoSecrets ./internal/oidc:FuzzParse
 FUZZTIME ?= 30s
 
 fuzz: ## Fuzz every target for FUZZTIME each (default 30s), e.g. make fuzz FUZZTIME=10m
@@ -88,6 +88,10 @@ lab-up: ## Start the local Keycloak + SP lab (needs lab/.env)
 
 lab-down: ## Stop the local lab and discard its state
 	$(LAB_COMPOSE) down
+
+lab-oidc: build ## Run the OIDC lab scenarios against a running lab and check ssotrace's findings
+	go -C lab/oidcrun build -o ../../bin/oidcrun .
+	bin/oidcrun
 
 clean: ## Remove build output
 	rm -rf bin/ dist/ coverage.out

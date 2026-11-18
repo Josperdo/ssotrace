@@ -79,7 +79,7 @@ func verdicts(h *har.HAR) []string {
 	if err != nil {
 		panic(err)
 	}
-	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: diagnose.DefaultClockSkew}
+	ctx := diagnose.Context{HAR: h, SAML: flow.TraceSAML(h), OIDC: flow.TraceOIDC(h), ClockSkew: diagnose.DefaultClockSkew}
 	var out []string
 	for _, f := range diagnose.Run(ctx, reg) {
 		out = append(out, f.RuleID+" "+f.Severity.String())
@@ -198,5 +198,86 @@ func TestRedactTwice(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(sigVerified)) || bytes.Contains(raw, []byte(sigUnverified)) {
 		t.Error("verified marker lost or downgraded on second redaction")
+	}
+}
+
+// TestRedactionPreservesOIDCDiagnosis is the same promise for OAuth/OIDC:
+// every break scenario reaches the same verdicts after redaction, and the
+// redacted file passes the leak scan.
+func TestRedactionPreservesOIDCDiagnosis(t *testing.T) {
+	idp := testutil.NewKeyPair(t, "idp.example.com")
+	tokenAt := testutil.RefTime.Add(12 * time.Second)
+	scenarios := map[string]struct {
+		edit func(*testutil.OIDCLoginOptions)
+		har  func(*har.HAR)
+	}{
+		"clean code flow": {},
+		"form_post":       {edit: func(o *testutil.OIDCLoginOptions) { o.Delivery = "form_post" }},
+		"fragment":        {edit: func(o *testutil.OIDCLoginOptions) { o.Delivery = "fragment" }},
+		"access denied": {edit: func(o *testutil.OIDCLoginOptions) {
+			o.Error, o.ErrorDescription = "access_denied", "alice@example.com is not assigned"
+		}},
+		"state mismatch": {edit: func(o *testutil.OIDCLoginOptions) { o.CallbackState = testutil.Ptr("st-another-tab-0001") }},
+		"nonce mismatch": {edit: func(o *testutil.OIDCLoginOptions) { o.IDTokenClaims = map[string]any{"nonce": "nonce-other-sign-in"} }},
+		"wrong audience": {edit: func(o *testutil.OIDCLoginOptions) {
+			o.IDTokenClaims = map[string]any{"aud": "other-app", "azp": "other-app"}
+		}},
+		"expired id token": {edit: func(o *testutil.OIDCLoginOptions) {
+			o.IDTokenClaims = map[string]any{"iat": tokenAt.Add(-20 * time.Minute).Unix(), "exp": tokenAt.Add(-10 * time.Minute).Unix()}
+		}},
+		"no PKCE":               {edit: func(o *testutil.OIDCLoginOptions) { o.PKCE = false }},
+		"browser client secret": {edit: func(o *testutil.OIDCLoginOptions) { o.ClientSecret = "s3cr3t-value-0123456789" }},
+		"token redirect_uri differs": {edit: func(o *testutil.OIDCLoginOptions) {
+			o.TokenRedirectURI = testutil.Ptr("https://app.example.org/callback/")
+			o.TokenStatus, o.TokenBody = 400, `{"error":"invalid_grant","error_description":"Incorrect redirect_uri"}`
+		}},
+		"callback reloaded": {edit: func(o *testutil.OIDCLoginOptions) { o.Reloads = 2 }},
+		"CORS blocked": {
+			edit: func(o *testutil.OIDCLoginOptions) { o.TokenStatus, o.TokenBody = 403, " " },
+			har: func(h *har.HAR) {
+				e := &h.Log.Entries[len(h.Log.Entries)-1]
+				e.Request.Headers = append(e.Request.Headers, har.NameValue{Name: "Origin", Value: "https://app.example.org"})
+			},
+		},
+		"code already used": {edit: func(o *testutil.OIDCLoginOptions) {
+			o.TokenStatus, o.TokenBody = 400, `{"error":"invalid_grant","error_description":"Code not valid"}`
+		}},
+		"redirect_uri not registered": {har: func(h *har.HAR) {
+			e := h.Log.Entries[0]
+			e.Response.Status = 400
+			e.Response.Content = har.Content{MimeType: "text/html", Text: "<p>Invalid parameter: redirect_uri https://app.example.org/cb?code=opaque123</p>"}
+			h.Log.Entries = []har.Entry{e}
+		}},
+	}
+	names := make([]string, 0, len(scenarios))
+	for n := range scenarios {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			s := scenarios[name]
+			o := testutil.DefaultOIDCLoginOptions()
+			o.IDP = idp
+			if s.edit != nil {
+				s.edit(&o)
+			}
+			original := testutil.NewOIDCLogin(t, o).HAR
+			if s.har != nil {
+				s.har(original)
+			}
+			out := redacted(t, original, Options{})
+
+			if leaks := Scan(out); len(leaks) != 0 {
+				t.Errorf("redacted file still has secrets: %+v", leaks)
+			}
+			want, got := verdicts(original), verdicts(out)
+			if strings.Join(want, ",") != strings.Join(got, ",") {
+				t.Errorf("diagnosis changed by redaction\n original: %v\n redacted: %v", want, got)
+			}
+			if !strings.Contains(strings.Join(want, ","), "OIDC") {
+				t.Errorf("scenario produced no OIDC verdicts: %v", want)
+			}
+		})
 	}
 }

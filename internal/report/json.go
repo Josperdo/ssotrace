@@ -22,6 +22,7 @@ type jsonReport struct {
 	Summary       Counts             `json:"summary"`
 	Findings      []diagnose.Finding `json:"findings"`
 	SAML          *flow.SAMLTrace    `json:"saml"`
+	OIDC          *flow.OIDCTrace    `json:"oidc"`
 }
 
 // JSON writes the report as one indented JSON document. Every finding is
@@ -46,6 +47,7 @@ func JSON(w io.Writer, r *Report) error {
 		Summary:       r.counts(),
 		Findings:      findings,
 		SAML:          r.SAML,
+		OIDC:          r.OIDC,
 	}
 	if err := enc.Encode(doc); err != nil {
 		return fmt.Errorf("write json report: %w", err)

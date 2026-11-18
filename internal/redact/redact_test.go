@@ -131,8 +131,10 @@ func TestRedactKeepsWhatDiagnosisNeeds(t *testing.T) {
 	}
 
 	cb := byURL("https://app.example.com/cb?code")
-	if v, _ := cb.Request.QueryParam("code"); v != Redacted {
-		t.Errorf("code = %q", v)
+	// Masked, not removed: the mask still pairs the callback with the
+	// token request that redeems the same code.
+	if v, _ := cb.Request.QueryParam("code"); !strings.HasPrefix(v, maskPrefix) {
+		t.Errorf("code = %q, want a salted mask", v)
 	}
 	if v, _ := cb.Request.QueryParam("client_id"); v != "app-1" {
 		t.Errorf("client_id = %q, want it kept", v)

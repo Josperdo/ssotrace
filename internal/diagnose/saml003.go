@@ -23,7 +23,7 @@ func (destinationMismatch) Check(ctx Context) []Finding {
 			continue
 		}
 		checked++
-		if sameURL(v.Resp.Destination, v.Msg.URL) {
+		if flow.SameURL(v.Resp.Destination, v.Msg.URL) {
 			continue
 		}
 		out = append(out, Finding{

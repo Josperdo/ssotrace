@@ -6,9 +6,9 @@
 
 Diagnose failed SSO logins from a HAR file, and redact it so it's safe to share.
 
-ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL, clock skew, rotated or expired certificates, missing or invalid signatures, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
+ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 or OpenID Connect exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL or redirect URI, clock skew, rotated or expired certificates and keys, missing or invalid signatures, state and nonce mismatches, failed code exchanges, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
 
-**Scope:** ssotrace diagnoses **SAML 2.0** logins. For OAuth 2.0 and OpenID Connect logins it reports redirect loops and identity provider error codes, and `scan` and `redact` handle their tokens and codes, but it does not check the OAuth or OIDC messages themselves.
+**Scope:** ssotrace diagnoses **SAML 2.0** and **OAuth 2.0 / OpenID Connect** logins. For OAuth and OIDC it sees what the browser sees: the authorization request, the callback, and token requests the browser makes itself (single-page apps). A token exchange done by the application's server never appears in a HAR, so for those apps ssotrace checks everything up to the callback.
 
 **Status:** early and evolving. There are no versioned releases; the `main` branch is the current version, and behavior and output may change. CI tests every change on Linux, macOS, and Windows.
 
@@ -60,6 +60,7 @@ ssotrace redact login.har -o login.redacted.har
 ```
 ssotrace diagnose <file.har> [--format text|json|markdown] [--no-color] [--max-size SIZE]
                   [--clock-skew DURATION] [--idp-cert FILE] [--sp-entity-id ID]
+                  [--jwks FILE] [--fetch-jwks URL]
 ssotrace redact   <file.har> -o <out.har> [--force] [--keep-bodies] [--max-size SIZE]
 ssotrace scan     <file.har> [--format text|json] [--no-color] [--max-size SIZE]
 ssotrace version
@@ -72,6 +73,8 @@ Time checks allow 3 minutes of clock difference between the identity provider an
 
 By default a valid signature proves only that a message was not altered after signing. To check who signed it, pass the IdP's signing certificate with `--idp-cert idp.pem`, taken from the IdP's metadata or admin console. A PEM file with several certificates is accepted, for rollovers. For IdP-initiated logins, where the capture has no request to learn the SP from, pass `--sp-entity-id` so the audience can be checked.
 
+OIDC ID tokens are decoded, but their signatures are checked only when you supply the IdP's public keys: `--jwks keys.json` reads a saved key set, and `--fetch-jwks URL` downloads it from the IdP's `jwks_uri` (listed in `{issuer}/.well-known/openid-configuration`). `--fetch-jwks` is the only network request ssotrace ever makes; it goes only to the URL you type and requires https (plain http only for `localhost`).
+
 Output is plain text for people by default, grouped by login attempt with problems first. Use `--format markdown` to paste into a ticket, or `--format json` for scripts (it carries `"schema_version": 1` and every check, including passes). Colors are used only on a terminal; `--no-color` or `NO_COLOR=1` turns them off.
 
 ### Sharing a HAR safely
@@ -81,10 +84,10 @@ Output is plain text for people by default, grouped by login attempt with proble
 `ssotrace redact file.har -o file.redacted.har` writes a copy that is safe to share and still diagnoses the same way:
 
 - Cookies and headers keep their names and attributes; their values are removed.
-- Token, code, and password parameters are removed; parameters that only describe the request (`client_id`, `scope`, standard `error` values) are kept.
+- Token and password parameters are removed. Authorization codes, `state`, and `nonce` are replaced with salted hashes, so a callback still matches its request and token call. Parameters that only describe the request (`client_id`, `scope`, standard `error` values) are kept.
 - SAML messages keep issuers, audiences, URLs, times, algorithms, and the signing certificate. Signature and digest values are removed, and user identifiers are replaced with salted hashes, so two messages about the same user still match.
 - JWTs keep the claims that explain a rejection (`iss`, `aud`, `exp`, …) and lose the rest and their signature.
-- Response bodies are removed, except for any identity provider error codes. Keep them with `--keep-bodies`.
+- Token endpoint responses keep their structure: ID and access tokens are redacted as JWTs, refresh tokens are removed, and OAuth error values stay. Other response bodies are removed, except for any identity provider error codes. Keep them with `--keep-bodies`.
 - A summary of the original diagnosis is written into the file's `log.comment`.
 
 Before writing, ssotrace scans its own output; if anything secret-looking remains, it writes nothing. The output is created with `0600` permissions, never overwrites the input, and replaces an existing file only with `--force`. Redaction is careful but not magic: review the output before sharing it.

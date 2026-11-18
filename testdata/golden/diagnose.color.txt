@@ -1,5 +1,5 @@
 [1mssotrace · login.har[0m
-[2m4 SAML logins[0m
+[2m4 SAML logins · 3 OAuth/OIDC logins[0m
 
 [1mCapture[0m
   [1;33m![0m [1;33mWARN [0m [2mHAR004[0m  IdP error code found
@@ -8,7 +8,7 @@
   [36mi[0m [36mINFO [0m [2mSAML013[0m  Signer not checked against a trusted certificate
           [1m→ [0mTo check who signed, run again with --idp-cert.
 
-[1mLogin 1 · SP-initiated · app.example.org · 2026-01-15 10:00:00 UTC[0m
+[1mSAML login 1 · SP-initiated · app.example.org · 2026-01-15 10:00:00 UTC[0m
   [1;31m✗[0m [1;31mFAIL [0m [2mSAML002[0m  Assertion audience does not match the SP
           The IdP addressed this assertion to a different SP (Audience) than the
           one that requested the login. The SP will reject it.
@@ -22,12 +22,12 @@
           [2mSignature algorithm[0m  RSA-SHA1
           [1m→ [0mChange the signature algorithm to RSA-SHA256.
 
-[1mLogin 2 · IdP-initiated · app.example.org · 2026-01-15 10:01:00 UTC[0m
+[1mSAML login 2 · IdP-initiated · app.example.org · 2026-01-15 10:01:00 UTC[0m
   [36mi[0m [36mINFO [0m [2mSAML005[0m  IdP-initiated login
           [1m→ [0mIf the SP rejects it, allow IdP-initiated SSO in the SP or start the
             login from the application.
 
-[1mLogin 3 · no response · app.example.org · 2026-01-15 10:02:00 UTC[0m
+[1mSAML login 3 · no response · app.example.org · 2026-01-15 10:02:00 UTC[0m
   [1;31m✗[0m [1;31mFAIL [0m [2mSAML005[0m  IdP rejected the login request
           The IdP answered the SP's AuthnRequest with an HTTP error and never
           sent a Response back.
@@ -35,7 +35,19 @@
           [2mIdP HTTP status[0m  400
           [1m→ [0mCheck the IdP's logs at this time.
 
-[1mLogin 4 · SP-initiated · app.example.org · 2026-01-15 10:03:00 UTC[0m
+[1mSAML login 4 · SP-initiated · app.example.org · 2026-01-15 10:03:00 UTC[0m
   [32m✓[0m no problems found
 
-Result: [1;31m2 failures · 2 warnings · 2 notes · 2 checks passed[0m
+[1mOIDC login 1 · authorization code · app.example.org · 2026-01-15 10:04:00 UTC[0m
+  [1;31m✗[0m [1;31mFAIL [0m [2mOIDC001[0m  Authorization server returned an error
+          The callback carried an OAuth error instead of an authorization code.
+          [2merror[0m  access_denied
+          [1m→ [0mCheck the authorization server's logs at this time.
+
+[1mOAuth login 2 · implicit, no callback · app.example.org · 2026-01-15 10:05:00 UTC[0m
+  [32m✓[0m no problems found
+
+[1mOAuth/OIDC login 3 · callback to an uncaptured request · app.example.org · 2026-01-15 10:06:00 UTC[0m
+  [32m✓[0m no problems found
+
+Result: [1;31m3 failures · 2 warnings · 2 notes · 2 checks passed[0m

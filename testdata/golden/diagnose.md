@@ -1,6 +1,6 @@
 ## ssotrace report: login.har
 
-**Result:** 2 failures · 2 warnings · 2 notes · 2 checks passed · 4 SAML logins
+**Result:** 3 failures · 2 warnings · 2 notes · 2 checks passed · 4 SAML logins · 3 OAuth/OIDC logins
 
 ### Capture
 
@@ -18,7 +18,7 @@ The capture contains 1 error code from the identity provider.
 
 **Fix:** To check who signed, run again with --idp-cert.
 
-### Login 1 · SP-initiated · app.example.org · 2026-01-15 10:00:00 UTC
+### SAML login 1 · SP-initiated · app.example.org · 2026-01-15 10:00:00 UTC
 
 #### ❌ FAIL · SAML002 · Assertion audience does not match the SP
 
@@ -40,13 +40,13 @@ The IdP addressed this assertion to a different SP (Audience) than the one that 
 
 **Fix:** Change the signature algorithm to RSA-SHA256.
 
-### Login 2 · IdP-initiated · app.example.org · 2026-01-15 10:01:00 UTC
+### SAML login 2 · IdP-initiated · app.example.org · 2026-01-15 10:01:00 UTC
 
 #### ℹ️ INFO · SAML005 · IdP-initiated login
 
 **Fix:** If the SP rejects it, allow IdP-initiated SSO in the SP or start the login from the application.
 
-### Login 3 · no response · app.example.org · 2026-01-15 10:02:00 UTC
+### SAML login 3 · no response · app.example.org · 2026-01-15 10:02:00 UTC
 
 #### ❌ FAIL · SAML005 · IdP rejected the login request
 
@@ -59,7 +59,27 @@ The IdP answered the SP's AuthnRequest with an HTTP error and never sent a Respo
 
 **Fix:** Check the IdP's logs at this time.
 
-### Login 4 · SP-initiated · app.example.org · 2026-01-15 10:03:00 UTC
+### SAML login 4 · SP-initiated · app.example.org · 2026-01-15 10:03:00 UTC
+
+✅ No problems found.
+
+### OIDC login 1 · authorization code · app.example.org · 2026-01-15 10:04:00 UTC
+
+#### ❌ FAIL · OIDC001 · Authorization server returned an error
+
+The callback carried an OAuth error instead of an authorization code.
+
+| Evidence | Value |
+|---|---|
+| error | `access_denied` |
+
+**Fix:** Check the authorization server's logs at this time.
+
+### OAuth login 2 · implicit, no callback · app.example.org · 2026-01-15 10:05:00 UTC
+
+✅ No problems found.
+
+### OAuth/OIDC login 3 · callback to an uncaptured request · app.example.org · 2026-01-15 10:06:00 UTC
 
 ✅ No problems found.
 

@@ -80,41 +80,11 @@ func spEntityID(ctx Context, v responseView) (id, source string) {
 			continue
 		}
 		ar := req.Message.AuthnRequest
-		if ar.Issuer != "" && ar.ACSURL != "" && sameURL(ar.ACSURL, v.Msg.URL) {
+		if ar.Issuer != "" && ar.ACSURL != "" && flow.SameURL(ar.ACSURL, v.Msg.URL) {
 			return ar.Issuer, "Issuer of another AuthnRequest in the capture with the same ACS URL"
 		}
 	}
 	return "", ""
-}
-
-// sameURL compares two URLs the way an SP comparing Destination or
-// Recipient should: scheme and host case-insensitively, default ports
-// dropped, path exactly, query ignored.
-func sameURL(a, b string) bool {
-	na, okA := normalizeURL(a)
-	nb, okB := normalizeURL(b)
-	return okA && okB && na == nb
-}
-
-func normalizeURL(raw string) (string, bool) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" {
-		return "", false
-	}
-	scheme := strings.ToLower(u.Scheme)
-	host := strings.ToLower(u.Hostname())
-	port := u.Port()
-	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
-		port = ""
-	}
-	if port != "" {
-		host += ":" + port
-	}
-	path := u.Path
-	if path == "" {
-		path = "/"
-	}
-	return scheme + "://" + host + path, true
 }
 
 // urlMismatchHint explains the most common reasons two URLs differ, so the

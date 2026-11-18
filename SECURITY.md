@@ -18,11 +18,11 @@ HAR files routinely contain live credentials: session cookies, bearer tokens, SA
 
 ### What ssotrace is designed to guarantee
 
-- **Offline by default.** ssotrace makes no network requests unless you pass an explicit flag that says it will.
+- **Offline by default.** ssotrace makes no network requests unless you pass an explicit flag that says it will. The only such flag is `--fetch-jwks URL`, which downloads a public key set from the URL you typed: never from an address found in the HAR, and sending nothing about the capture. It requires https (plain http only to `localhost`), applies the same rule to redirects (and never follows one from https down to plain http), and caps the response at 1 MiB and the request at 15 seconds.
 - **No telemetry.** Nothing about you or your files leaves your machine.
 - **Secrets are never printed in full.** Diagnostic output shows a short preview and length, never a complete token, cookie, or signature.
 - **Redaction fails closed.** Values that might be credentials are removed when in doubt. Redacted output is re-scanned for leaks before it is written; if the scan finds anything, no file is written.
-- **Bounded input.** File size, decompressed payload size, and XML depth are capped to resist resource-exhaustion attacks from crafted files.
+- **Bounded input.** File size, decompressed payload size, XML depth, token and key set size, and RSA key size (8192 bits) are capped to resist resource-exhaustion attacks from crafted files.
 - **Safe file handling.** Output files are created with owner-only permissions (`0600`) on macOS and Linux; on Windows, where file access is governed by access-control lists instead, a new file inherits the permissions of its folder (inside your user profile, that means you and administrators) and written atomically, so a failed run never leaves a partial file. The input file is never modified or overwritten, including through a symlink or hard link, and an existing output file is replaced only with `--force`.
 - **Untrusted text is shown inert.** Text copied from a HAR into a report has control characters and Unicode direction overrides replaced, so a crafted file cannot inject terminal escape sequences or disguise text. Markdown output shows such values as code, so they cannot become links or HTML.
 - **Masked identifiers cannot be reversed.** User identifiers are replaced with salted hashes. The salt is random for each run and never stored, so a masked value cannot be confirmed by hashing guesses. Digest values, which would allow the same kind of guessing, are removed.

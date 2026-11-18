@@ -3,6 +3,7 @@ package redact
 import (
 	"strings"
 
+	"github.com/Josperdo/ssotrace/internal/oidc"
 	"github.com/Josperdo/ssotrace/internal/saml"
 )
 
@@ -31,7 +32,13 @@ const (
 	sigUnverified = saml.RedactedSigUnverified
 
 	// jwtSigMarker replaces a JWT's signature segment.
-	jwtSigMarker = "ssotrace-redacted"
+	jwtSigMarker = oidc.RedactedSignature
+
+	// redirectURIMarker stands in for an IdP's own words about a rejected
+	// redirect_uri. It is a fixed string, never the IdP's text, because that
+	// text can quote the URI with a code or token in it. OIDC003 recognizes
+	// it, so the diagnosis survives redaction.
+	redirectURIMarker = "redirect_uri_mismatch"
 )
 
 // isRedacted reports whether v is empty or one of the redactor's markers.

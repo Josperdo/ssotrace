@@ -51,9 +51,11 @@ func Detect(e *har.Entry) Protocol {
 
 // isAuthorizationRequest matches the browser's trip to the authorization
 // endpoint. client_id and response_type are both required there (OAuth 2.0,
-// RFC 6749 §4.1.1), and the pair rarely appears anywhere else.
+// RFC 6749 §4.1.1), and the pair rarely appears anywhere else. OIDC also
+// allows the request as a form POST (OIDC Core §3.1.2.1).
 func isAuthorizationRequest(r *har.Request) bool {
-	return hasQuery(r, "client_id") && hasQuery(r, "response_type")
+	return (hasQuery(r, "client_id") && hasQuery(r, "response_type")) ||
+		(hasForm(r, "client_id") && hasForm(r, "response_type"))
 }
 
 // isCallback matches the redirect back to the application, delivered in the

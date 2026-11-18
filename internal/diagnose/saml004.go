@@ -39,7 +39,7 @@ func (recipientMismatch) Check(ctx Context) []Finding {
 			// The SP accepts the assertion if any bearer confirmation fits.
 			ok := false
 			for _, r := range recipients {
-				if sameURL(r, v.Msg.URL) {
+				if flow.SameURL(r, v.Msg.URL) {
 					ok = true
 					break
 				}

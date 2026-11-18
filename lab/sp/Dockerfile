@@ -1,7 +1,7 @@
 # Builds the lab SP into a static binary on an empty base image.
 FROM golang:1.27.4 AS build
 WORKDIR /src
-COPY go.mod main.go ./
+COPY go.mod *.go oidc.html ./
 RUN CGO_ENABLED=0 go build -trimpath -o /sp .
 
 FROM scratch

@@ -8,7 +8,7 @@ Every finding ssotrace reports comes from a rule. This page lists every rule, wh
 |--------|--------|
 | `HAR`  | The capture itself: missing traffic, stripped bodies, redirect loops |
 | `SAML` | SAML 2.0 requests, responses, assertions, and signatures |
-| `OIDC` | OAuth 2.0 and OpenID Connect (no rules in this version) |
+| `OIDC` | OAuth 2.0 and OpenID Connect authorization requests, callbacks, token requests, and ID tokens |
 
 IDs are stable. A rule keeps its ID for life, and a removed rule's ID is never reused, so scripts and saved reports that reference an ID keep meaning the same thing.
 
@@ -272,3 +272,133 @@ Common causes:
 
 How to fix:
 Treat an unexpected case as suspicious and find where the Response was modified. Make sure the SP accepts exactly one assertion and reads only the one its signature check validated.
+
+### OIDC001 — Authorization server returned an error
+Severity: FAIL (INFO for a silent sign-in that needs the user)
+
+What it means:
+The identity provider sent the browser back to the application with an `error` instead of an authorization code or token, so the user is not signed in. The finding shows `error`, `error_description`, and `error_uri`, and explains the standard error values. If the provider answered the authorization request with an HTTP error page and never sent the browser back, that is reported here too. When the application asked for a silent sign-in (`prompt=none`) and got `login_required`, `interaction_required`, `consent_required`, or `account_selection_required`, the finding is INFO: the application is expected to fall back to an interactive sign-in.
+
+Common causes:
+- `access_denied`: the user canceled or declined consent, or a policy does not allow this user into the application.
+- `unauthorized_client` or `unsupported_response_type`: the requested flow is not enabled for this client.
+- `invalid_scope`: a requested scope does not exist or is not allowed for the client.
+- An error page with no callback: an unknown `client_id` or an unregistered `redirect_uri` (see OIDC003).
+
+How to fix:
+Read `error_description`, then check the identity provider's sign-in log for this user at the time of the capture. The finding's fix line covers the specific error.
+
+### OIDC002 — State does not match
+Severity: FAIL (INFO when the authorization request is not in the capture)
+
+What it means:
+The `state` value in the callback differs from the one the application sent, or the callback has none. Applications use `state` to make sure a callback answers a sign-in they started, and they reject one that does not match. The finding shows a short preview of each value, never the full value.
+
+A callback that arrives again with the same `state` and code as an earlier one (a reload of the callback page, or the Back button) is a repeat of that login, not a callback to a missing request. The rule does not report it; OIDC007 explains the refused code it leads to.
+
+Common causes:
+- Two sign-ins in parallel: two tabs, a double click, or the back button.
+- A load balancer sent the callback to a server that does not hold the session that stored `state`.
+- An old or bookmarked callback URL was opened again.
+
+How to fix:
+Start one sign-in at a time from the application's own sign-in page. Make sessions sticky or shared across servers.
+
+### OIDC003 — redirect_uri rejected or inconsistent
+Severity: FAIL
+
+What it means:
+Either the identity provider refused the `redirect_uri` because it is not registered for the client, or the token request sent a different `redirect_uri` than the authorization request did (or left it out). The "not registered" diagnosis is made only from the authorization step; a token endpoint complaint about `redirect_uri` is reported as the two requests disagreeing, with the provider's message as evidence. Providers never redirect to a `redirect_uri` they do not trust, so a rejected one shows up as the provider's own error page; ssotrace recognizes the wording used by Keycloak, Microsoft Entra ID (`AADSTS50011`), Okta, and Google (`redirect_uri_mismatch`).
+
+Common causes:
+- The application's address changed (new domain, port, or path) but the identity provider's list did not.
+- http vs https behind a TLS-terminating proxy, a trailing slash, or different letter case.
+- The token request builds its `redirect_uri` from a different setting than the authorization request.
+
+How to fix:
+Register the `redirect_uri` from the evidence exactly as shown (Keycloak: "Valid redirect URIs"; Microsoft Entra ID: Authentication > Redirect URIs; Okta: "Sign-in redirect URIs"), and send the same value in the token request.
+
+### OIDC004 — ID token nonce does not match
+Severity: FAIL
+
+What it means:
+The application sent a `nonce`, and the ID token carries a different one or none. The nonce ties an ID token to one sign-in, and clients reject a token whose nonce does not match. The finding shows a short preview of each value.
+
+Common causes:
+- Two sign-ins in parallel, so the token belongs to the other one.
+- The application regenerated its nonce before the callback arrived.
+- A proxy or the identity provider dropped the parameter (no nonce in the token).
+
+How to fix:
+Keep the nonce in the session until the callback is handled, and start one sign-in at a time. If the token has no nonce, check that the authorization request reaches the identity provider unchanged.
+
+### OIDC005 — ID token audience does not include the client
+Severity: FAIL (INFO when the capture does not show the client ID)
+
+What it means:
+The ID token's `aud` does not contain the application's `client_id`, or its `azp` names another client. Clients reject an ID token that was issued to someone else. The client ID comes from the authorization request, or from the token request when the authorization request is not in the capture.
+
+Common causes:
+- The application is configured with a different client ID than the identity provider client that issues its tokens (another app registration, tenant, or environment).
+- A token from another application is being reused.
+
+How to fix:
+Make the application's client ID and the identity provider client match. If `azp` names another client, find which application obtained the token.
+
+### OIDC006 — Token outside its validity window
+Severity: FAIL, or WARN within the clock-skew tolerance
+
+What it means:
+An ID token, or an access token that is a JWT, had already expired (`exp`) or was not yet valid (`nbf`) when the browser received it. As with SAML006, times are compared with the HAR timestamp, and a difference within `--clock-skew` (default 3 minutes) is a warning. The rule also warns about a token issued in the future (`iat` ahead of the browser by more than the tolerance), which estimates the clock difference, and about a token whose `exp` is not after its `iat`. An ID token without `exp` is a failure, because OIDC requires it.
+
+Common causes:
+- The identity provider's clock, or the user's, is wrong.
+- A token lifetime of a few seconds.
+
+How to fix:
+Synchronize clocks with NTP, including the user's machine. Lengthen very short token lifetimes in the identity provider.
+
+### OIDC007 — Token request failed
+Severity: FAIL for an authorization code (including one whose answer the browser blocked); WARN for other grants and for requests that never completed
+
+What it means:
+A token request the browser made itself (single-page applications do this) did not get HTTP 200. For an authorization code, the sign-in fails at its last step. For a refresh token, the session ended early. A request with no recorded response is usually a CORS block. So is a cross-origin response without an `Access-Control-Allow-Origin` header for the page's origin: the browser records it, often with an empty body, but never hands it to the application, even when the status is 200. The finding then shows the page origin and the header the identity provider sent. When the authorization request used PKCE but the token request has no `code_verifier`, the finding says so. When the failed request comes from a repeat of an earlier login's callback (a reload or the Back button), and that login already redeemed the code, the finding says the sign-in itself may have worked and names the earlier login.
+
+Common causes:
+- `invalid_grant` after a reload: the callback page was loaded again and re-sent a code that was already redeemed.
+- `invalid_grant`: the code expired, was used twice, or the `redirect_uri` or PKCE `code_verifier` does not match the authorization request.
+- `invalid_client`: the identity provider expects a client secret from a browser app (a public client configured as confidential).
+- No response, or a response without `Access-Control-Allow-Origin`: the identity provider does not allow the application's origin (CORS).
+
+How to fix:
+Redeem each code once, immediately, with the same `redirect_uri` and the matching `code_verifier`, then replace the callback URL (a redirect, or `history.replaceState` in a browser app) so a reload cannot send the code again. Configure browser apps as public clients that use PKCE, and allow the application's origin for the client (Keycloak: "Web origins").
+
+### OIDC008 — Insecure OAuth pattern
+Severity: WARN (INFO for missing PKCE when the code is redeemed by a server)
+
+What it means:
+The sign-in uses a pattern current OAuth security guidance (RFC 9700) says to avoid:
+- The implicit flow (`response_type` includes `token`), which puts access tokens in the URL.
+- An authorization code flow without PKCE. It is a warning when the browser redeems the code itself, because a browser app cannot keep a secret, and INFO otherwise.
+- PKCE with the `plain` method, which is the default when no method is named.
+- A client secret sent from the browser.
+- An unsigned token (`alg: none`).
+
+Common causes:
+Older libraries or client settings from before PKCE was standard.
+
+How to fix:
+Use `response_type=code` with PKCE (`S256`), make browser apps public clients, rotate any secret the browser has sent, and have the identity provider sign every token.
+
+### OIDC009 — ID token signature
+Severity: FAIL (invalid or unsigned), INFO (not checked)
+
+What it means:
+With `--jwks FILE` or `--fetch-jwks URL`, ssotrace verifies each ID token's signature against the keys you supplied. Because you chose the keys, a valid signature means the identity provider issued the token, not just that it is intact. The key decides which algorithms may be used, so a token claiming `HS256` is never checked with a public key. Without keys, a single INFO finding says the tokens were decoded but not verified and names the issuers to get keys from. A token signed with a shared secret (`HS256`) or by a key not in your key set is INFO.
+
+Common causes:
+- Invalid: the token was changed after signing, or the key set you supplied is out of date.
+- Key not in the key set: the identity provider rotated keys, or the token came from a different provider.
+
+How to fix:
+Fetch the identity provider's current key set from its `jwks_uri` (listed in `{issuer}/.well-known/openid-configuration`; for Keycloak, `{issuer}/protocol/openid-connect/certs`). If the signature is still invalid, treat the token as forged.

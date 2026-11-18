@@ -78,6 +78,25 @@
         "saml_force_name_id_format": "true",
         "saml_name_id_format": "email"
       }
+    },
+    {
+      "clientId": "lab-spa",
+      "name": "ssotrace lab SPA (OIDC)",
+      "description": "Public client for the single-page app at /oidc/. It redeems codes from the browser, so token requests show up in a HAR. PKCE is allowed but not required, so the no-PKCE scenario can run.",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": false,
+      "baseUrl": "http://127.0.0.1:8081/oidc/",
+      "redirectUris": ["http://127.0.0.1:8081/oidc/callback"],
+      "webOrigins": ["http://127.0.0.1:8081"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://127.0.0.1:8081/oidc/"
+      }
     }
   ]
 }

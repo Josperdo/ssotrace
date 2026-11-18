@@ -1,0 +1,158 @@
+<!doctype html>
+<!--
+  ssotrace lab single-page app (OIDC authorization code + PKCE).
+
+  INTENTIONALLY INSECURE. LOCAL TESTING ONLY. It decodes the ID token for
+  display but never verifies it, and it has switches that break the sign-in
+  on purpose. Its only job is to make the browser itself talk to Keycloak,
+  so the whole OIDC exchange, token request included, lands in a HAR.
+-->
+<meta charset="utf-8">
+<title>ssotrace lab SPA</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+  pre { background: #f4f4f4; padding: .75rem; overflow-x: auto; }
+  li { margin: .25rem 0; }
+</style>
+
+<h1>ssotrace lab SPA (OIDC)</h1>
+<p>Open DevTools → Network, tick <b>Preserve log</b>, then pick a sign-in:</p>
+<ul>
+  <li><a href="?start=normal">Normal sign-in</a> (code + PKCE S256)</li>
+  <li><a href="?start=silent">Silent sign-in</a> (<code>prompt=none</code>; fails with <code>login_required</code> when no Keycloak session exists)</li>
+  <li><a href="?start=nopkce">No PKCE</a></li>
+  <li><a href="?start=plain">PKCE with the plain method</a></li>
+  <li><a href="?start=noverifier">PKCE, but no <code>code_verifier</code> in the token request</a></li>
+  <li><a href="?start=twice">Redeem the code twice</a></li>
+  <li><a href="?start=wrongredirect">Different <code>redirect_uri</code> in the token request</a></li>
+  <li><a href="?start=secret">Send a <code>client_secret</code> from the browser</a></li>
+  <li><a href="?start=implicit">Implicit flow</a> (enable "Implicit flow" on the client first)</li>
+</ul>
+<p><a href="/">Back to the lab SP</a></p>
+<h2>Result</h2>
+<pre id="out">No sign-in yet.</pre>
+
+<script>
+"use strict";
+
+// Fixed lab endpoints. They must match lab/realm/ssotrace-lab.json.
+const ISSUER = "http://127.0.0.1:8080/realms/ssotrace-lab";
+const CLIENT_ID = "lab-spa";
+const REDIRECT_URI = "http://127.0.0.1:8081/oidc/callback";
+
+const out = document.getElementById("out");
+const show = (text) => { out.textContent = text; };
+
+// base64url without padding, as PKCE (RFC 7636) and JWTs use.
+function b64url(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function randomString() {
+  return b64url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+// S256 code challenge: base64url(SHA-256(verifier)).
+async function s256(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return b64url(new Uint8Array(digest));
+}
+
+// start builds the authorization request for one scenario and sends the
+// browser to Keycloak. state, nonce, and the PKCE verifier are kept in
+// sessionStorage so the callback page can use them.
+async function start(mode) {
+  const state = randomString();
+  const nonce = randomString();
+  const verifier = randomString();
+  sessionStorage.setItem("lab", JSON.stringify({ mode, state, nonce, verifier }));
+
+  const p = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: mode === "implicit" ? "id_token token" : "code",
+    scope: "openid profile",
+    state,
+    nonce,
+  });
+  if (mode === "silent") p.set("prompt", "none");
+  if (mode === "plain") {
+    p.set("code_challenge", verifier);
+    p.set("code_challenge_method", "plain");
+  } else if (mode !== "nopkce" && mode !== "implicit") {
+    p.set("code_challenge", await s256(verifier));
+    p.set("code_challenge_method", "S256");
+  }
+  location.assign(ISSUER + "/protocol/openid-connect/auth?" + p);
+}
+
+// redeem exchanges the code at the token endpoint from the browser, the
+// way a single-page app does. This request is why the lab is an SPA: a
+// server-side exchange would never appear in the HAR.
+async function redeem(code, saved) {
+  const form = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: CLIENT_ID,
+    redirect_uri: saved.mode === "wrongredirect" ? REDIRECT_URI + "/" : REDIRECT_URI,
+  });
+  if (saved.mode !== "nopkce" && saved.mode !== "noverifier") form.set("code_verifier", saved.verifier);
+  if (saved.mode === "secret") form.set("client_secret", "lab-not-a-secret");
+
+  const res = await fetch(ISSUER + "/protocol/openid-connect/token", { method: "POST", body: form });
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
+// claims decodes a JWT payload for display. It does not verify anything.
+function claims(jwt) {
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(part));
+  } catch {
+    return "(not a readable JWT)";
+  }
+}
+
+async function callback() {
+  const saved = JSON.parse(sessionStorage.getItem("lab") || "{}");
+  // The implicit flow answers in the fragment, the code flow in the query.
+  const params = new URLSearchParams(location.hash ? location.hash.slice(1) : location.search);
+  const lines = ["Scenario: " + (saved.mode || "(unknown: start from this page)")];
+
+  if (params.get("state") !== saved.state) lines.push("WARNING: state does not match the one this tab sent.");
+  if (params.has("error")) {
+    lines.push("error: " + params.get("error"), "error_description: " + (params.get("error_description") || ""));
+    show(lines.join("\n"));
+    return;
+  }
+  if (params.has("id_token")) {
+    lines.push("ID token claims (NOT verified):", JSON.stringify(claims(params.get("id_token")), null, 2));
+    show(lines.join("\n"));
+    return;
+  }
+
+  const code = params.get("code");
+  const first = await redeem(code, saved);
+  lines.push("Token endpoint answered HTTP " + first.status);
+  if (saved.mode === "twice") {
+    const second = await redeem(code, saved);
+    lines.push("Second redemption answered HTTP " + second.status + ": " + JSON.stringify(second.body));
+  }
+  if (first.body.id_token) {
+    lines.push("ID token claims (NOT verified):", JSON.stringify(claims(first.body.id_token), null, 2));
+  } else {
+    lines.push(JSON.stringify(first.body, null, 2));
+  }
+  lines.push("", "Now export the HAR into lab/captures/.");
+  show(lines.join("\n"));
+}
+
+const startMode = new URLSearchParams(location.search).get("start");
+if (startMode) {
+  start(startMode).catch((e) => show("Could not start: " + e));
+} else if (location.pathname.endsWith("/callback")) {
+  callback().catch((e) => show("Callback failed: " + e + "\n(A blocked token request usually means CORS: check Web origins.)"));
+}
+</script>

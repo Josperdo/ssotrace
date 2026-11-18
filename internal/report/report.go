@@ -19,6 +19,7 @@ type Report struct {
 	Version  string // ssotrace version, for the Markdown footer and JSON
 	Findings []diagnose.Finding
 	SAML     *flow.SAMLTrace
+	OIDC     *flow.OIDCTrace
 }
 
 // Counts tallies findings by severity.
@@ -54,19 +55,22 @@ type section struct {
 }
 
 // sections groups the non-passing findings: capture-wide ones first, then
-// one section per SAML flow in capture order. Every flow gets a section,
-// even a clean one, so the reader can see each login was looked at.
+// one section per SAML flow and one per OIDC flow, each in capture order.
+// Every flow gets a section, even a clean one, so the reader can see each
+// login was looked at.
 func (r *Report) sections() []section {
-	byFlow := map[int][]diagnose.Finding{}
+	samlFlows := map[int][]diagnose.Finding{}
+	oidcFlows := map[int][]diagnose.Finding{}
 	var capture []diagnose.Finding
 	for _, f := range r.Findings {
-		if f.Severity == diagnose.Pass {
-			continue
-		}
-		if f.Flow == nil {
+		switch {
+		case f.Severity == diagnose.Pass:
+		case f.Flow != nil:
+			samlFlows[*f.Flow] = append(samlFlows[*f.Flow], f)
+		case f.OIDCFlow != nil:
+			oidcFlows[*f.OIDCFlow] = append(oidcFlows[*f.OIDCFlow], f)
+		default:
 			capture = append(capture, f)
-		} else {
-			byFlow[*f.Flow] = append(byFlow[*f.Flow], f)
 		}
 	}
 
@@ -75,7 +79,15 @@ func (r *Report) sections() []section {
 		for i := range r.SAML.Flows {
 			out = append(out, section{
 				Title:    flowTitle(i, &r.SAML.Flows[i]),
-				Findings: sortFindings(byFlow[i]),
+				Findings: sortFindings(samlFlows[i]),
+			})
+		}
+	}
+	if r.OIDC != nil {
+		for i := range r.OIDC.Flows {
+			out = append(out, section{
+				Title:    oidcFlowTitle(i, &r.OIDC.Flows[i]),
+				Findings: sortFindings(oidcFlows[i]),
 			})
 		}
 	}
@@ -94,7 +106,7 @@ func sortFindings(fs []diagnose.Finding) []diagnose.Finding {
 	return fs
 }
 
-// flowTitle names a login attempt: "Login 1 · SP-initiated ·
+// flowTitle names a SAML login attempt: "SAML login 1 · SP-initiated ·
 // app.example.org · 2026-01-15 10:00:00 UTC".
 func flowTitle(i int, f *flow.SAMLFlow) string {
 	kind := "SP-initiated"
@@ -106,18 +118,85 @@ func flowTitle(i int, f *flow.SAMLFlow) string {
 	case f.Response == nil:
 		kind = "no response"
 	}
-	parts := []string{fmt.Sprintf("Login %d", i+1), kind}
-	if h := spHost(f); h != "" {
-		parts = append(parts, h)
-	}
 	first := f.Request
 	if first == nil {
 		first = f.Response
 	}
+	var at string
 	if first != nil {
-		if t, err := time.Parse(time.RFC3339Nano, first.Time); err == nil {
-			parts = append(parts, t.UTC().Format("2006-01-02 15:04:05 UTC"))
+		at = first.Time
+	}
+	return title(fmt.Sprintf("SAML login %d", i+1), kind, spHost(f), at)
+}
+
+// oidcFlowTitle names an OAuth/OIDC login attempt: "OIDC login 1 ·
+// authorization code · app.example.org · 2026-01-15 10:00:00 UTC". A
+// request without the openid scope is plain OAuth 2.0 and is called that;
+// without the request, only an ID token proves the login was OIDC.
+func oidcFlowTitle(i int, f *flow.OIDCFlow) string {
+	proto, kind := "OAuth/OIDC", ""
+	if (f.Callback != nil && f.Callback.Params.IDToken != nil) ||
+		(f.Token != nil && f.Token.Response != nil && f.Token.Response.IDToken != nil) {
+		proto = "OIDC"
+	}
+	var first *flow.Sent
+	var appURL string
+	switch {
+	case f.Authorization != nil:
+		a := f.Authorization.Params
+		proto = "OAuth"
+		if a.OpenID() {
+			proto = "OIDC"
 		}
+		kind = responseTypeName(a.ResponseType)
+		if f.Callback == nil {
+			kind += ", no callback"
+		}
+		first, appURL = &f.Authorization.Sent, a.RedirectURI
+	case f.Callback != nil && f.Repeats != nil:
+		kind = fmt.Sprintf("callback loaded again (repeats login %d)", *f.Repeats+1)
+		first, appURL = &f.Callback.Sent, f.Callback.URL
+	case f.Callback != nil:
+		kind = "callback to an uncaptured request"
+		first, appURL = &f.Callback.Sent, f.Callback.URL
+	case f.Token != nil:
+		kind = "token call for an uncaptured login"
+		first, appURL = &f.Token.Sent, f.Token.Request.RedirectURI
+	}
+	var at string
+	if first != nil {
+		at = first.Time
+	}
+	host := ""
+	if u, err := url.Parse(appURL); err == nil {
+		host = u.Host
+	}
+	return title(fmt.Sprintf("%s login %d", proto, i+1), kind, host, at)
+}
+
+// responseTypeName names the OAuth flow a response_type selects.
+func responseTypeName(rt string) string {
+	switch strings.Join(strings.Fields(rt), " ") {
+	case "code":
+		return "authorization code"
+	case "token", "id_token", "id_token token", "token id_token":
+		return "implicit"
+	case "":
+		return "no response_type"
+	default:
+		return "hybrid"
+	}
+}
+
+// title joins the non-empty parts of a section title, rendering the HAR
+// timestamp in UTC.
+func title(name, kind, host, at string) string {
+	parts := []string{name, kind}
+	if host != "" {
+		parts = append(parts, host)
+	}
+	if t, err := time.Parse(time.RFC3339Nano, at); err == nil {
+		parts = append(parts, t.UTC().Format("2006-01-02 15:04:05 UTC"))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -183,18 +262,32 @@ func summaryLine(c Counts) string {
 	return strings.Join(parts, " · ")
 }
 
-// loginCount describes how many SAML login attempts were found.
+// loginCount describes how many login attempts were found, per protocol:
+// "1 SAML login", "2 OAuth/OIDC logins", or both.
 func (r *Report) loginCount() string {
-	n := 0
+	var nSAML, nOIDC int
 	if r.SAML != nil {
-		n = len(r.SAML.Flows)
+		nSAML = len(r.SAML.Flows)
 	}
-	switch n {
-	case 0:
-		return "no SAML logins found"
-	case 1:
-		return "1 SAML login"
-	default:
-		return fmt.Sprintf("%d SAML logins", n)
+	if r.OIDC != nil {
+		nOIDC = len(r.OIDC.Flows)
 	}
+	if nSAML+nOIDC == 0 {
+		return "no SAML or OAuth/OIDC logins found"
+	}
+	var parts []string
+	if nSAML > 0 {
+		parts = append(parts, plural(nSAML, "SAML login"))
+	}
+	if nOIDC > 0 {
+		parts = append(parts, plural(nOIDC, "OAuth/OIDC login"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }

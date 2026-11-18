@@ -68,6 +68,8 @@ func (c config) routes() http.Handler {
 	mux.HandleFunc("GET /login", c.login)
 	mux.HandleFunc("POST /saml/acs", c.acs)
 	mux.HandleFunc("GET /saml/metadata", c.metadata)
+	mux.HandleFunc("GET /oidc/{$}", c.oidcApp)
+	mux.HandleFunc("GET /oidc/callback", c.oidcApp)
 	return mux
 }
 
@@ -76,6 +78,7 @@ var homePage = template.Must(template.New("home").Parse(`<!doctype html>
 <h1>ssotrace lab SP</h1>
 <p>Open DevTools → Network, tick <b>Preserve log</b>, then:</p>
 <p><a href="/login">Log in with Keycloak (SP-initiated)</a></p>
+<p><a href="/oidc/">OIDC single-page app (authorization code + PKCE)</a></p>
 `))
 
 func (c config) home(w http.ResponseWriter, _ *http.Request) {

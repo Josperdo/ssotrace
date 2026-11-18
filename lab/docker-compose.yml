@@ -1,6 +1,7 @@
 # INTENTIONALLY INSECURE. LOCAL TESTING ONLY.
 #
 # A throwaway Keycloak identity provider plus a minimal SAML service provider
+# (which also serves a small OIDC single-page app at /oidc/)
 # for generating SSO traffic to test ssotrace against. Keycloak runs in dev
 # mode (HTTP, in-memory database, relaxed defaults). Both ports are bound to
 # 127.0.0.1 so nothing else on the network can reach them. Never expose this

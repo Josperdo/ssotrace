@@ -11,6 +11,7 @@ import (
 
 	"github.com/Josperdo/ssotrace/internal/flow"
 	"github.com/Josperdo/ssotrace/internal/har"
+	"github.com/Josperdo/ssotrace/internal/oidc"
 )
 
 // Severity ranks how bad a finding is. The zero value is Pass so that an
@@ -74,8 +75,12 @@ type Evidence struct {
 type Finding struct {
 	RuleID string `json:"rule_id"` // e.g. "SAML002"
 	// Flow is the index into the SAML trace's flows (saml.flows in JSON)
-	// that this finding is about, or nil for capture-wide findings.
+	// that this finding is about. OIDCFlow is the same for the OIDC trace
+	// (oidc.flows). At most one is set; both nil means capture-wide. They
+	// are separate fields so a consumer that only knows "flow" can never
+	// look an OIDC finding up in the SAML list.
 	Flow     *int       `json:"flow,omitempty"`
+	OIDCFlow *int       `json:"oidc_flow,omitempty"`
 	Severity Severity   `json:"severity"`
 	Title    string     `json:"title"`
 	Detail   string     `json:"detail"`
@@ -95,10 +100,16 @@ type Context struct {
 	// SAML is every SAML message in the capture, decoded and paired into
 	// flows. Rules must tolerate nil.
 	SAML *flow.SAMLTrace
+	// OIDC is every OAuth/OIDC message in the capture, paired into flows.
+	// Rules must tolerate nil.
+	OIDC *flow.OIDCTrace
 	// IDPCerts are the IdP signing certificates the user trusts
 	// (--idp-cert). Empty means signatures prove integrity only: nobody
 	// has said which signer to expect.
 	IDPCerts []*x509.Certificate
+	// JWKS holds the token signing keys the user trusts (--jwks,
+	// --fetch-jwks). Nil means token signatures cannot be checked.
+	JWKS *oidc.KeySet
 	// SPEntityID is the SP's entity ID if the user supplied it
 	// (--sp-entity-id). It wins over anything inferred from the capture.
 	SPEntityID string
@@ -175,6 +186,15 @@ func DefaultRules() (*Registry, error) {
 		nameIDProblems{},
 		signerMismatch{},
 		multipleAssertions{},
+		callbackError{},
+		stateMismatch{},
+		redirectURIMismatch{},
+		nonceMismatch{},
+		audienceNotClient{},
+		tokenTimes{},
+		tokenEndpointError{},
+		insecurePatterns{},
+		idTokenSignature{},
 	} {
 		if err := reg.Register(r); err != nil {
 			return nil, fmt.Errorf("default rules: %w", err)

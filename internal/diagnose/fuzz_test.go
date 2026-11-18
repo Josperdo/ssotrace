@@ -10,11 +10,16 @@ import (
 )
 
 // FuzzDiagnose runs every rule on arbitrary HARs. Rules read deep into
-// parsed SAML and URLs, so this is where an unchecked index or nil would
+// parsed SAML, OIDC, and URLs, so this is where an unchecked index or nil would
 // show up as a crash on a crafted file.
 func FuzzDiagnose(f *testing.F) {
 	login := testutil.NewSAMLLogin(f, testutil.DefaultAuthnRequestOptions(), testutil.DefaultResponseOptions())
 	f.Add(testutil.MarshalHAR(f, login.HAR))
+	for _, delivery := range []string{"query", "form_post", "fragment"} {
+		o := testutil.DefaultOIDCLoginOptions()
+		o.Delivery = delivery
+		f.Add(testutil.MarshalHAR(f, testutil.NewOIDCLogin(f, o).HAR))
+	}
 	f.Add([]byte(`{"log":{"entries":[{"request":{"method":"GET","url":"https://a.example/?SAMLResponse=x&code=1&state=2"},"response":{"status":302}}]}}`))
 
 	reg, err := DefaultRules()
@@ -26,7 +31,7 @@ func FuzzDiagnose(f *testing.F) {
 		if err != nil {
 			return
 		}
-		ctx := Context{HAR: h, SAML: flow.TraceSAML(h), ClockSkew: DefaultClockSkew}
+		ctx := Context{HAR: h, SAML: flow.TraceSAML(h), OIDC: flow.TraceOIDC(h), ClockSkew: DefaultClockSkew}
 		_ = Run(ctx, reg)
 	})
 }
