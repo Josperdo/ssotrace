@@ -21,7 +21,7 @@ HAR file → har.Load (bounded) → flow.TraceSAML + flow.TraceOIDC (decode + co
 | `internal/diagnose` | The rule engine: severities, findings, the `Rule` interface, and the rule registry. |
 | `internal/redact` | Builds a shareable copy of a HAR from an allowlist (names kept, secret values removed, SAML identities and OAuth codes, `state`, and `nonce` masked with salted hashes, signatures replaced with a record of their result, token endpoint responses filtered rather than dropped), then proves it clean with the same leak scanner `ssotrace scan` uses. Writes atomically with `0600` permissions and never over the input. |
 | `internal/report` | Renders findings and flows. JSON output carries `"schema_version": 1`. |
-| `internal/kb` | Placeholder for explanations of vendor error codes. Empty in this version: HAR004 reports the raw codes. |
+| `internal/kb` | Plain-English cause and fix for identity provider error codes and messages, from one embedded data file (`codes.json`). HAR004 uses it to explain the codes it finds. |
 | `internal/secret` | Produces safe previews (short prefix plus length) of secret values for display. |
 | `internal/testutil` | Test-only. Builds synthetic fixtures at test time: throwaway RSA keys and self-signed certificates, signed SAML Responses, AuthnRequests in the Redirect binding, and HAR entries that carry them. Never linked into the binary. |
 

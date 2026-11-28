@@ -63,3 +63,60 @@ jobs:
       - name: Fuzz (smoke)
         if: matrix.os == 'ubuntu-latest'
         run: make fuzz FUZZTIME=15s
+
+  # Runs this repository's own action (action.yml) the way a user's
+  # workflow would, against two throwaway repositories: one whose HAR is
+  # redacted, which must pass, and one with a raw HAR, which must fail.
+  action:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Prepare test repositories
+        run: |
+          st="$RUNNER_TEMP/st$(go env GOEXE)"
+          go build -o "$st" ./cmd/ssotrace
+          for d in clean dirty; do
+            mkdir -p "$d-repo"
+            git -C "$d-repo" init -q
+          done
+          "$st" redact testdata/har/chrome.har -o clean-repo/login.har
+          cp testdata/har/chrome.har dirty-repo/login.HAR
+          git -C clean-repo add -A
+          git -C dirty-repo add -A
+
+      - name: Action passes a redacted HAR
+        id: clean
+        uses: ./
+        with:
+          working-directory: clean-repo
+
+      - name: Action fails a raw HAR
+        id: dirty
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: dirty-repo
+
+      - name: Check the action's results
+        env:
+          CLEAN_SCANNED: ${{ steps.clean.outputs.files-scanned }}
+          CLEAN_SECRETS: ${{ steps.clean.outputs.files-with-secrets }}
+          DIRTY_OUTCOME: ${{ steps.dirty.outcome }}
+          DIRTY_SECRETS: ${{ steps.dirty.outputs.files-with-secrets }}
+        run: |
+          echo "clean: scanned=$CLEAN_SCANNED secrets=$CLEAN_SECRETS; dirty: outcome=$DIRTY_OUTCOME secrets=$DIRTY_SECRETS"
+          [ "$CLEAN_SCANNED" = 1 ] && [ "$CLEAN_SECRETS" = 0 ] && [ "$DIRTY_OUTCOME" = failure ] && [ "$DIRTY_SECRETS" = 1 ]

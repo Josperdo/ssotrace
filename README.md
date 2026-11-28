@@ -6,7 +6,7 @@
 
 Diagnose failed SSO logins from a HAR file, and redact it so it's safe to share.
 
-ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 or OpenID Connect exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL or redirect URI, clock skew, rotated or expired certificates and keys, missing or invalid signatures, state and nonce mismatches, failed code exchanges, IdP error codes, redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
+ssotrace reads a browser HAR export of a failed sign-in, finds the SAML 2.0 or OpenID Connect exchange in it, and explains in plain English why the login failed: wrong audience, wrong ACS URL or redirect URI, clock skew, rotated or expired certificates and keys, missing or invalid signatures, state and nonce mismatches, failed code exchanges, identity provider error codes (with what they mean for Microsoft Entra ID, AD FS, Okta, Google, and Keycloak), redirect loops, and more. It then writes a redacted copy you can attach to a ticket. It runs offline, as a single binary, with no configuration.
 
 **Scope:** ssotrace diagnoses **SAML 2.0** and **OAuth 2.0 / OpenID Connect** logins. For OAuth and OIDC it sees what the browser sees: the authorization request, the callback, and token requests the browser makes itself (single-page apps). A token exchange done by the application's server never appears in a HAR, so for those apps ssotrace checks everything up to the callback.
 
@@ -87,7 +87,7 @@ Output is plain text for people by default, grouped by login attempt with proble
 - Token and password parameters are removed. Authorization codes, `state`, and `nonce` are replaced with salted hashes, so a callback still matches its request and token call. Parameters that only describe the request (`client_id`, `scope`, standard `error` values) are kept.
 - SAML messages keep issuers, audiences, URLs, times, algorithms, and the signing certificate. Signature and digest values are removed, and user identifiers are replaced with salted hashes, so two messages about the same user still match.
 - JWTs keep the claims that explain a rejection (`iss`, `aud`, `exp`, …) and lose the rest and their signature.
-- Token endpoint responses keep their structure: ID and access tokens are redacted as JWTs, refresh tokens are removed, and OAuth error values stay. Other response bodies are removed, except for any identity provider error codes. Keep them with `--keep-bodies`.
+- Token endpoint responses keep their structure: ID and access tokens are redacted as JWTs, refresh tokens are removed, and OAuth error values stay. Other response bodies are removed, except for any identity provider error codes and known error messages. Keep them with `--keep-bodies`.
 - A summary of the original diagnosis is written into the file's `log.comment`.
 
 Before writing, ssotrace scans its own output; if anything secret-looking remains, it writes nothing. The output is created with `0600` permissions, never overwrites the input, and replaces an existing file only with `--force`. Redaction is careful but not magic: review the output before sharing it.
@@ -95,6 +95,34 @@ Before writing, ssotrace scans its own output; if anything secret-looking remain
 Exit codes: `0` no failures (or, for `scan`, no secrets) found, `1` at least one failure (or secret) found, `2` usage or input error.
 
 ssotrace works offline. It makes no network requests unless you pass a flag that explicitly says it will, and it sends no telemetry.
+
+### Keep raw HAR files out of a repository
+
+This repository is also a GitHub Action. It runs `ssotrace scan` on every `.har` file tracked in a pull request's checkout and fails the check if any contains secrets:
+
+```yaml
+name: HAR secrets
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<commit SHA>
+        with:
+          persist-credentials: false
+      - uses: Josperdo/ssotrace@<commit SHA>
+```
+
+There are no tagged releases, so pin the action to a full commit SHA from this repository. The action builds ssotrace from source at that commit (about 30 seconds), so there is no binary to download. Each finding is annotated on its file, and the log shows secrets only as short previews.
+
+| Input | Default | |
+|---|---|---|
+| `paths` | `:(icase)*.har` | Git pathspecs, one per line, for the files to scan |
+| `working-directory` | `.` | The checkout to scan |
+
+Outputs: `files-scanned` and `files-with-secrets`. The action installs the Go version ssotrace needs with `actions/setup-go`; if a later step in the same job needs a different Go, run `actions/setup-go` again after it.
 
 ## Security
 

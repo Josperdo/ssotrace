@@ -58,7 +58,7 @@ func (r *redactor) tokenResponse(c *har.Content) (string, bool) {
 			}
 		case "error_description":
 			if isString {
-				out[k] = keepCodesOnly(s)
+				out[k] = keepCodesOnly(s, codesInBodyText(s))
 			}
 		case "token_type", "scope":
 			if isString {

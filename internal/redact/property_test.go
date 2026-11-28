@@ -281,3 +281,61 @@ func TestRedactionPreservesOIDCDiagnosis(t *testing.T) {
 		})
 	}
 }
+
+// TestRedactionKeepsKnowledgeBaseCodes checks that every code and known
+// message HAR004 finds, including the knowledge base's pattern-less codes
+// and exact messages, is still found in the redacted file.
+func TestRedactionKeepsKnowledgeBaseCodes(t *testing.T) {
+	page := func(rawURL, mime, body string) har.Entry {
+		e := testutil.GetEntry(t, rawURL, testutil.RefTime, 200)
+		e.Response.Content = har.Content{MimeType: mime, Text: body}
+		return e
+	}
+	tests := map[string]har.Entry{
+		"Google code on an error page": page("https://accounts.example.com/signin", "text/html",
+			"<h1>Access blocked</h1><p>Error 403: org_internal</p><p>alice@example.com</p>"),
+		"Google code in error_description": testutil.GetEntry(t,
+			"https://app.example.com/cb?error=access_denied&error_description=admin_policy_enforced+for+alice%40example.com", testutil.RefTime, 200),
+		"Google code in a JSON body": page("https://accounts.example.com/api", "application/json",
+			`{"detail":"Error: disallowed_useragent","user":"alice@example.com"}`),
+		"Keycloak message on a page": page("https://idp.example.com/realms/lab/login-actions/authenticate", "text/html",
+			`<span id="input-error">Invalid username or password.</span><input name="username" value="alice">`),
+		"Okta message in error_description": testutil.GetEntry(t,
+			"https://app.example.com/cb?error=access_denied&error_description=User+is+not+assigned+to+the+client+application.", testutil.RefTime, 200),
+		"Entra code with an explanation": testutil.GetEntry(t,
+			"https://app.example.com/cb?error=access_denied&error_description=AADSTS50105%3a+alice%40example.com+is+not+assigned", testutil.RefTime, 200),
+	}
+	codes := func(h *har.HAR) []string {
+		reg, err := diagnose.DefaultRules()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, rule := range reg.Rules() {
+			if rule.ID() != "HAR004" {
+				continue
+			}
+			for _, f := range rule.Check(diagnose.Context{HAR: h}) {
+				for _, e := range f.Evidence {
+					if e.Label != "Meaning" {
+						out = append(out, e.Label+"|"+strings.SplitN(e.Value, ",", 2)[0])
+					}
+				}
+			}
+		}
+		return out
+	}
+	for name, e := range tests {
+		t.Run(name, func(t *testing.T) {
+			h := testutil.NewHAR(e)
+			before := codes(h)
+			if len(before) == 0 {
+				t.Fatal("HAR004 found nothing in the original; the fixture is wrong")
+			}
+			after := codes(redacted(t, h, Options{}))
+			if strings.Join(before, "\n") != strings.Join(after, "\n") {
+				t.Errorf("HAR004 evidence changed by redaction:\nbefore %q\nafter  %q", before, after)
+			}
+		})
+	}
+}

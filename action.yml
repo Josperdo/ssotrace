@@ -1,0 +1,57 @@
+name: ssotrace scan
+description: Fail when a HAR file tracked in the repository contains secrets (cookies, tokens, passwords, signatures).
+author: Josperdo
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  paths:
+    description: >-
+      Git pathspecs, one per line, for the files to scan. The default is
+      every tracked .har file, in any letter case.
+    required: false
+    default: ":(icase)*.har"
+  working-directory:
+    description: The git checkout to scan, relative to the workspace.
+    required: false
+    default: "."
+
+outputs:
+  files-scanned:
+    description: How many HAR files were scanned.
+    value: ${{ steps.scan.outputs.files-scanned }}
+  files-with-secrets:
+    description: How many of them contain secrets.
+    value: ${{ steps.scan.outputs.files-with-secrets }}
+
+runs:
+  using: composite
+  steps:
+    # ssotrace is built from the action's own source, at the exact commit the
+    # workflow pinned, so there is no separate binary to download or trust.
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+
+    - name: Build ssotrace
+      id: build
+      shell: bash
+      env:
+        CGO_ENABLED: "0"
+      run: |
+        bin="$RUNNER_TEMP/ssotrace$(go env GOEXE)"
+        go build -C "$GITHUB_ACTION_PATH" -trimpath -o "$bin" ./cmd/ssotrace
+        echo "bin=$bin" >>"$GITHUB_OUTPUT"
+
+    # Inputs reach the script only as environment variables, never pasted
+    # into the script text, so a pathspec cannot inject shell commands.
+    - name: Scan HAR files
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SSOTRACE: ${{ steps.build.outputs.bin }}
+        SCAN_PATHS: ${{ inputs.paths }}
+      run: sh "$GITHUB_ACTION_PATH/scripts/action-scan.sh"

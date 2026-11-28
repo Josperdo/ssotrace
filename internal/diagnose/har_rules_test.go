@@ -280,9 +280,111 @@ func TestHAR004ErrorCodes(t *testing.T) {
 		})
 	}
 
-	// The same code on two pages is one finding with one evidence line.
+	// The same code on two pages is listed once.
 	twice := capture(get("https://a.example.com/x?e=AADSTS50011"), get("https://b.example.com/y?e=AADSTS50011"))
-	if f := only(t, idpErrorCodes{}, twice); len(f.Evidence) != 1 {
-		t.Errorf("duplicate code listed %d times", len(f.Evidence))
+	f := only(t, idpErrorCodes{}, twice)
+	if n := countLabel(f, "AADSTS50011"); n != 1 {
+		t.Errorf("duplicate code listed %d times", n)
+	}
+}
+
+func countLabel(f Finding, label string) int {
+	n := 0
+	for _, e := range f.Evidence {
+		if e.Label == label {
+			n++
+		}
+	}
+	return n
+}
+
+// TestHAR004KnowledgeBase checks what the embedded knowledge base adds:
+// explanations for known codes, and recognition of codes and messages
+// that have no vendor pattern.
+func TestHAR004KnowledgeBase(t *testing.T) {
+	withBody := func(e har.Entry, mime, text string) har.Entry {
+		e.Response.Content = har.Content{MimeType: mime, Text: text}
+		return e
+	}
+	get := func(u string) har.Entry { return hop("GET", u, 200, 0) }
+
+	tests := []struct {
+		name        string
+		ctx         Context
+		want        Severity
+		wantLabel   string // an evidence label that must be present
+		wantMeaning string // part of the explanation; "" = none expected
+		wantFix     string
+		noMeaning   bool // the code must not be explained
+	}{
+		{
+			name:      "known Entra code is explained",
+			ctx:       capture(get("https://app.example.com/cb?error=access_denied&error_description=AADSTS50105%3a+not+assigned")),
+			want:      Warn,
+			wantLabel: "AADSTS50105", wantMeaning: "not assigned to the application", wantFix: "AADSTS50105: Assign the user",
+		},
+		{
+			name:      "single known code gets its own fix",
+			ctx:       capture(withBody(get("https://sts.example.com/adfs/ls"), "text/html", "<p>MSIS7042 occurred</p>")),
+			want:      Warn,
+			wantLabel: "MSIS7042", wantMeaning: "sign-in loop", wantFix: "Find why the application sends the user back",
+		},
+		{
+			name:      "unknown code keeps the generic fix",
+			ctx:       capture(withBody(get("https://sts.example.com/adfs/ls"), "text/html", "<p>MSIS7012 occurred</p>")),
+			want:      Warn,
+			wantLabel: "MSIS7012", wantFix: "Look up the code", noMeaning: true,
+		},
+		{
+			name:      "pattern-less code in a URL",
+			ctx:       capture(get("https://app.example.com/cb?error=org_internal")),
+			want:      Warn,
+			wantLabel: "org_internal", wantMeaning: "own Google Workspace organization",
+		},
+		{
+			name:      "pattern-less code on an error page",
+			ctx:       capture(withBody(get("https://accounts.example.com/signin"), "text/html", "<p>Error 403: org_internal</p>")),
+			want:      Warn,
+			wantLabel: "org_internal",
+		},
+		{
+			name: "pattern-less code as a bare word in a page is ignored",
+			ctx:  capture(withBody(get("https://accounts.example.com/signin"), "text/html", `<script>var e={org_internal:1}</script>`)),
+			want: Pass,
+		},
+		{
+			name: "Keycloak message on its error page",
+			ctx: capture(withBody(get("https://idp.example.com/realms/lab/login-actions/authenticate"), "text/html",
+				`<span id="input-error">Invalid username or password.</span>`)),
+			want:      Warn,
+			wantLabel: "Message", wantMeaning: "username or password is wrong",
+		},
+		{
+			name:      "Okta message in a callback's error_description",
+			ctx:       capture(get("https://app.example.com/cb?error=access_denied&error_description=User+is+not+assigned+to+the+client+application.")),
+			want:      Warn,
+			wantLabel: "Message", wantMeaning: "not assigned to this application in Okta",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := only(t, idpErrorCodes{}, tt.ctx)
+			if f.Severity != tt.want {
+				t.Fatalf("severity = %v, want %v\n%+v", f.Severity, tt.want, f)
+			}
+			if tt.wantLabel != "" && countLabel(f, tt.wantLabel) == 0 {
+				t.Errorf("no %q evidence: %+v", tt.wantLabel, f.Evidence)
+			}
+			meaning := evidence(f, "Meaning")
+			if tt.noMeaning && meaning != "" {
+				t.Errorf("unknown code got an explanation: %q", meaning)
+			}
+			if tt.wantMeaning != "" && !strings.Contains(meaning, tt.wantMeaning) {
+				t.Errorf("meaning = %q, want containing %q", meaning, tt.wantMeaning)
+			}
+			if tt.wantFix != "" && !strings.Contains(f.Fix, tt.wantFix) {
+				t.Errorf("fix = %q, want containing %q", f.Fix, tt.wantFix)
+			}
+		})
 	}
 }

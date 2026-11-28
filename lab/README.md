@@ -92,6 +92,7 @@ Scenarios marked *page* need only a link on the SPA page. The others change the 
 | Scenario | How to cause it | What ssotrace reports |
 |---|---|---|
 | **Baseline** | *page:* Normal sign-in | Every OIDC rule passes; OIDC009 INFO without keys, PASS with `--fetch-jwks` |
+| **Wrong password** | Sign in as `alice` with any wrong password | HAR004 WARN: Keycloak's "Invalid username or password." message, explained |
 | **Silent sign-in without a session** | *page:* Silent sign-in, in a fresh private window | OIDC001 INFO (`login_required` after `prompt=none`) |
 | **User declines consent** | *Settings → Login settings → Consent required* on; sign in and click **No** | OIDC001 FAIL (`access_denied`) |
 | **redirect_uri not registered** | *Settings → Valid redirect URIs* → `http://127.0.0.1:9999/*`; *page:* Normal sign-in | Keycloak shows its "Invalid parameter: redirect_uri" page: OIDC001 FAIL and OIDC003 FAIL |

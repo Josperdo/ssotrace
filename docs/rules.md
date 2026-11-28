@@ -80,11 +80,15 @@ Severity: WARN
 What it means:
 An identity provider's own error code appears in a URL, redirect target, form body, or HTML, JSON, XML, or text response body. ssotrace recognizes Microsoft Entra ID (`AADSTS` plus 5 or 6 digits), AD FS (`MSIS` plus 4 digits), Okta (`E0000` plus 3 digits), and the standard OAuth 2.0 and OpenID Connect `error` values. JavaScript files are not searched, because login pages ship scripts that list every code they might display. Each code is reported once, with where it first appeared.
 
+ssotrace also carries a built-in knowledge base of common codes from Microsoft Entra ID, AD FS, Okta, Google, and Keycloak. For a code it knows, the finding adds a **Meaning** line and the fix for that code. The knowledge base also adds what the patterns above cannot find:
+- Codes with no fixed pattern, such as Google's `org_internal`. These are recognized anywhere in a URL, and in a page only in the form error pages print them (`Error: org_internal` or `Error 403: org_internal`), so a word in some page's data does not count.
+- Exact messages from providers that show sentences instead of codes, such as Keycloak's "Invalid username or password." or Okta's "User is not assigned to the client application.", in a page or in an `error_description`.
+
 Common causes:
 The IdP refused the login and said why in its own terms.
 
 How to fix:
-Look up the code in the identity provider's documentation, or search the IdP's sign-in logs for it at the time of the capture.
+Follow the fix shown for each code the knowledge base knows. For any other code, look it up in the identity provider's documentation, or search the IdP's sign-in logs for it at the time of the capture.
 
 ### SAML001 — IdP returned an error instead of a login
 Severity: FAIL

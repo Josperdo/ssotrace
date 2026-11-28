@@ -1,0 +1,316 @@
+{
+  "entries": [
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50011",
+      "cause": "The redirect URI (reply URL) in the request is not registered for the application.",
+      "fix": "In the app registration's Authentication page, add the exact redirect URI from the request: scheme, host, port, path, and trailing slash must all match."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50105",
+      "cause": "The user is not assigned to the application, and the application requires assignment.",
+      "fix": "Assign the user, or a group they belong to, in Enterprise applications > the app > Users and groups, or turn off Assignment required."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS700016",
+      "cause": "No application with this client ID exists in the tenant the user signed in to.",
+      "fix": "Check the client ID and the tenant in the sign-in URL. A single-tenant app must be used through its own tenant; a multi-tenant app must be consented in the user's tenant."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS65001",
+      "cause": "Neither the user nor an administrator has consented to the permissions the application asks for.",
+      "fix": "Have an administrator grant consent for the application, or let the user consent if tenant policy allows it."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS65004",
+      "cause": "The user declined the consent prompt.",
+      "fix": "Have the user sign in again and accept, or have an administrator grant consent for all users."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50020",
+      "cause": "The user's account comes from another tenant or identity provider and is not a guest in this tenant.",
+      "fix": "Invite the user as a guest, or for a multi-tenant app sign in through the common or organizations endpoint instead of this tenant's."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50034",
+      "cause": "The user account does not exist in this directory.",
+      "fix": "Check the username for typos and that the user is signing in to the right tenant."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50126",
+      "cause": "The username or password is wrong.",
+      "fix": "Have the user retry or reset the password. Repeated failures from an app or script point at stored credentials that are out of date."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50053",
+      "cause": "The account is locked, after too many failed sign-ins or because sign-ins came from a known malicious IP address.",
+      "fix": "Wait for the lockout to end or have an administrator unlock the account, and review the failed attempts in the sign-in logs."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50055",
+      "cause": "The user's password has expired.",
+      "fix": "Have the user change the password, then sign in again."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50057",
+      "cause": "The user account is disabled.",
+      "fix": "An administrator must enable the account again (Users > the user > Account enabled)."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50058",
+      "cause": "A silent sign-in (prompt=none) found no signed-in user.",
+      "fix": "Expected when there is no session: the application should fall back to an interactive sign-in. If the user is signed in, the browser may be blocking third-party cookies."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50076",
+      "cause": "Multi-factor authentication is required, and the user has not completed it for this sign-in.",
+      "fix": "Have the user complete MFA. An application that signs in silently must fall back to an interactive sign-in."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50079",
+      "cause": "The user must register for multi-factor authentication before signing in.",
+      "fix": "Have the user complete MFA registration when prompted, or at the My Sign-Ins page."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS53003",
+      "cause": "A Conditional Access policy blocked the sign-in.",
+      "fix": "Open this sign-in in the Entra sign-in logs: its Conditional Access tab names the policy and the condition that failed."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS53000",
+      "cause": "Conditional Access requires a compliant or managed device, and this device is not one.",
+      "fix": "Bring the device into compliance (for example by enrolling it in Intune), or sign in from a managed device."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS50196",
+      "cause": "Entra ID stopped a sign-in loop: the same browser asked it to sign in too many times in a short period.",
+      "fix": "Find why the application does not accept the sign-in it receives and starts another one, often a cookie or session problem in the application."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS7000218",
+      "cause": "The token request carries no client secret or client assertion, but the application is registered as a confidential client.",
+      "fix": "For a browser or mobile app, register its redirect URI under the Single-page application or Mobile and desktop platform. Otherwise, send the client's credentials."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS7000215",
+      "cause": "The client secret in the token request is wrong.",
+      "fix": "Check that the application uses the secret's value, not its ID, and that the secret has not expired or been replaced."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS9002326",
+      "cause": "The browser redeemed the code from another origin, which Entra ID allows only for redirect URIs registered as a single-page application.",
+      "fix": "Move the redirect URI to the Single-page application platform on the app registration's Authentication page."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS54005",
+      "cause": "The authorization code was already redeemed.",
+      "fix": "Redeem each code once. Look for a callback page that runs twice, for example after a reload."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS70008",
+      "cause": "The authorization code or refresh token has expired.",
+      "fix": "Redeem codes immediately after the callback. For an expired refresh token, sign the user in again."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS700054",
+      "cause": "The application asked for an ID token in the URL (the implicit flow), which is not enabled for it.",
+      "fix": "Switch to the authorization code flow with PKCE. If the implicit flow is truly needed, enable ID tokens under Implicit grant on the Authentication page."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS700051",
+      "cause": "The application asked for an access token in the URL (response_type=token), which is not enabled for it.",
+      "fix": "Switch to the authorization code flow with PKCE. If the implicit flow is truly needed, enable access tokens under Implicit grant on the Authentication page."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS500113",
+      "cause": "The application has no reply address registered.",
+      "fix": "Add the application's redirect URI, or for SAML its Reply URL (Assertion Consumer Service URL), in the application's settings."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS90102",
+      "cause": "The redirect_uri value is not a valid absolute URI.",
+      "fix": "Send an absolute URI with a scheme and host, such as https://app.example.com/callback."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS900144",
+      "cause": "A required parameter is missing from the request.",
+      "fix": "The error_description names the missing parameter; make the application send it."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS750054",
+      "cause": "For the HTTP-Redirect binding, the SAMLRequest or SAMLResponse must be a query parameter in the URL, and it is not.",
+      "fix": "Send the AuthnRequest as a deflated, base64, URL-encoded SAMLRequest query parameter, or switch the SP to the HTTP-POST binding."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS75005",
+      "cause": "Entra ID could not read the SAML message.",
+      "fix": "Check that the SP sends a well-formed AuthnRequest with its binding's encoding: deflate plus base64 for HTTP-Redirect, base64 only for HTTP-POST."
+    },
+    {
+      "vendor": "Microsoft Entra ID",
+      "code": "AADSTS75011",
+      "cause": "The SP asked for an authentication method (RequestedAuthnContext) that differs from the one the user signed in with.",
+      "fix": "Remove RequestedAuthnContext from the SP's AuthnRequest, or have the SP accept the method the user signed in with."
+    },
+    {
+      "vendor": "AD FS",
+      "code": "MSIS7042",
+      "cause": "AD FS stopped a sign-in loop: the same browser session made too many requests in a short time.",
+      "fix": "Find why the application sends the user back to AD FS instead of accepting the token, often a cookie, clock, or certificate problem at the application."
+    },
+    {
+      "vendor": "AD FS",
+      "code": "MSIS7093",
+      "cause": "The request was signed with a different algorithm than the relying party trust expects, usually SHA-1 against SHA-256.",
+      "fix": "Make the relying party trust's secure hash algorithm match how the SP signs. SHA-256 is preferred."
+    },
+    {
+      "vendor": "AD FS",
+      "code": "MSIS7007",
+      "cause": "AD FS has no relying party trust for the identifier the SP sent.",
+      "fix": "Make the SP's entity ID (the AuthnRequest Issuer) exactly match an identifier on the relying party trust."
+    },
+    {
+      "vendor": "AD FS",
+      "code": "MSIS7102",
+      "cause": "The SP asked for an authentication method AD FS does not offer.",
+      "fix": "Remove or change RequestedAuthnContext in the SP's request, or enable that authentication method in AD FS."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000004",
+      "cause": "Authentication failed: the credentials are wrong, or the user cannot sign in.",
+      "fix": "Check the username and password, and the user's status (locked, suspended, or deactivated) in the Okta admin console."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000006",
+      "cause": "The caller does not have permission for the requested action.",
+      "fix": "Check the user's assignment to the app and the permissions of the token or client that made the call."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000011",
+      "cause": "The token in the request is invalid.",
+      "fix": "Check that the token has not expired or been revoked, and that it was issued by this Okta org."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000047",
+      "cause": "Okta's rate limit was exceeded.",
+      "fix": "Slow the client down and retry after the time given in the X-Rate-Limit-Reset response header."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000064",
+      "cause": "The user's password has expired.",
+      "fix": "Have the user change the password, then sign in again."
+    },
+    {
+      "vendor": "Okta",
+      "code": "E0000069",
+      "cause": "The user account is locked.",
+      "fix": "Unlock the user in the Okta admin console, or wait for the lockout to end."
+    },
+    {
+      "vendor": "Okta",
+      "message": "User is not assigned to the client application.",
+      "cause": "The user is not assigned to this application in Okta.",
+      "fix": "Assign the user, or a group they belong to, to the app in the Okta admin console (Applications > the app > Assignments)."
+    },
+    {
+      "vendor": "Google",
+      "code": "app_not_configured_for_user",
+      "cause": "Google's SAML app does not match the request, usually because the SP's entity ID differs from the Entity ID set in the Google Workspace SAML app.",
+      "fix": "In the Google Admin console's SAML app settings, set the Entity ID to exactly the SP's entity ID (the AuthnRequest Issuer)."
+    },
+    {
+      "vendor": "Google",
+      "code": "app_not_enabled_for_user",
+      "cause": "The SAML app is turned off for the user's organizational unit or group.",
+      "fix": "Turn the app on for the user's organizational unit or group in the app's User access settings in the Google Admin console."
+    },
+    {
+      "vendor": "Google",
+      "code": "org_internal",
+      "cause": "The OAuth app is limited to users in its own Google Workspace organization, and this user is outside it.",
+      "fix": "Sign in with an account from that organization, or change the app's user type to External on its OAuth consent screen."
+    },
+    {
+      "vendor": "Google",
+      "code": "admin_policy_enforced",
+      "cause": "A Google Workspace administrator does not allow this user to grant access to the app.",
+      "fix": "Have the administrator trust the app in the Admin console's API controls."
+    },
+    {
+      "vendor": "Google",
+      "code": "disallowed_useragent",
+      "cause": "Google refuses sign-in from embedded browsers (web views).",
+      "fix": "Sign in through the system browser, for example with the operating system's authentication session API instead of a web view."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Cookie not found. Please make sure cookies are enabled in your browser.",
+      "cause": "Keycloak did not get its login session cookie back when the login form was submitted.",
+      "fix": "Allow cookies for the Keycloak host. In an iframe or another site's context, third-party cookie blocking is the usual cause; also check that proxy and hostname settings do not change the cookie's domain or path."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Restart login cookie not found.",
+      "cause": "Keycloak did not get its login session cookie back when the login form was submitted: the cookie expired, was deleted, or the browser blocks it.",
+      "fix": "Start the sign-in again from the application. If it keeps happening, allow cookies for the Keycloak host; in an iframe or another site's context, third-party cookie blocking is the usual cause."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Invalid username or password.",
+      "cause": "The username or password is wrong, or the user does not exist in this realm.",
+      "fix": "Have the user retry or reset the password, and check that the user exists in the realm the sign-in uses."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Account is disabled, contact your administrator.",
+      "cause": "The user account is disabled in the realm.",
+      "fix": "An administrator must enable the user again (Users > the user > Enabled)."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Client not found.",
+      "cause": "No client in the realm matches the request's client_id, or for SAML the AuthnRequest Issuer.",
+      "fix": "Check the client_id or SP entity ID, and the realm name in the URL, against the realm's Clients list."
+    },
+    {
+      "vendor": "Keycloak",
+      "message": "Your login attempt timed out. Login will start from the beginning.",
+      "cause": "The login page stayed open longer than the realm allows for a login.",
+      "fix": "Start the sign-in again. If users routinely need longer, raise the realm's login timeout."
+    }
+  ]
+}

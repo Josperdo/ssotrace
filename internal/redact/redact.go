@@ -234,7 +234,7 @@ func (r *redactor) param(name, v string, inQuery bool) string {
 		}
 		return Redacted
 	case name == "error_description":
-		return keepCodesOnly(v)
+		return keepCodesOnly(v, diagnose.ErrorCodesInText(v))
 	case name == "state" || name == "nonce" || name == "code":
 		// These bind one sign-in together: state and nonce tie a callback
 		// and an ID token to their request, and the code ties a callback to
@@ -252,20 +252,26 @@ func (r *redactor) param(name, v string, inQuery bool) string {
 	}
 }
 
-// keepCodesOnly reduces free text to the IdP error codes in it, which is
-// what HAR004 needs, plus a fixed marker if it complained about the
-// redirect_uri, which is what OIDC003 needs. The rest can name the user or
-// their tenant.
-func keepCodesOnly(v string) string {
-	c := &har.Content{MimeType: "text/plain", Text: v}
-	codes := diagnose.ErrorCodesInBody(c)
+// keepCodesOnly reduces free text to codes, the IdP error codes and known
+// messages found in it, which is what HAR004 needs, plus a fixed marker if
+// it complained about the redirect_uri, which is what OIDC003 needs. The
+// rest can name the user or their tenant. The caller finds the codes with
+// the rules for where the text sits (a URL or a body), and they are
+// written so HAR004 finds them again in either place.
+func keepCodesOnly(v string, codes []string) string {
 	if diagnose.MentionsRedirectURIError(v) {
 		codes = append(codes, redirectURIMarker)
 	}
 	if len(codes) == 0 {
 		return Redacted
 	}
-	return strings.Join(codes, " ") + " " + Redacted
+	return diagnose.FormatBodyCodes(codes) + " " + Redacted
+}
+
+// codesInBodyText finds codes in text from inside a response body, such
+// as a token response's error_description, with HAR004's body rules.
+func codesInBodyText(v string) []string {
+	return diagnose.ErrorCodesInBody(&har.Content{MimeType: "text/plain", Text: v})
 }
 
 // --- headers and cookies ---
@@ -437,7 +443,7 @@ func (r *redactor) content(c *har.Content) har.Content {
 		return out
 	}
 	if strings.Contains(strings.ToLower(c.MimeType), "json") {
-		stub := `{"ssotrace":"body removed by redaction","codes":"` + strings.Join(codes, " ") + `"`
+		stub := `{"ssotrace":"body removed by redaction","codes":"` + diagnose.FormatBodyCodes(codes) + `"`
 		for _, code := range codes {
 			if diagnose.IsOAuthError(code) {
 				stub += `,"error":"` + code + `"`
@@ -447,7 +453,7 @@ func (r *redactor) content(c *har.Content) har.Content {
 		out.Text = stub + "}"
 		return out
 	}
-	out.Text = "[ssotrace: body removed by redaction; IdP error codes: " + strings.Join(codes, " ") + "]"
+	out.Text = "[ssotrace: body removed by redaction; IdP error codes: " + diagnose.FormatBodyCodes(codes) + "]"
 	return out
 }
 

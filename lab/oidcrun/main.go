@@ -44,12 +44,15 @@ type scenario struct {
 	args   func(dir string) []string // extra diagnose flags
 	expect []string
 	noFail bool // and no FAIL finding at all
+	// password replaces alice's real password, to sign in wrongly.
+	password string
 }
 
 func scenarios() []scenario {
 	fetch := func(string) []string { return []string{"--fetch-jwks", jwksURL} }
 	return []scenario{
 		{name: "baseline", mode: "normal", accept: true, args: fetch, expect: []string{"OIDC009 pass"}, noFail: true},
+		{name: "wrong-password", mode: "normal", password: "not-alices-password", expect: []string{"HAR004 warn"}},
 		{name: "silent-no-session", mode: "silent", expect: []string{"OIDC001 info"}},
 		{name: "consent-declined", mode: "normal", change: set("consentRequired", true), expect: []string{"OIDC001 fail"}},
 		{
@@ -138,6 +141,9 @@ func run(envPath, outDir, ssotrace, only string) error {
 }
 
 func runOne(adm *admin, password string, s scenario, outDir, ssotrace string) (outcome, verdict string, ok bool, err error) {
+	if s.password != "" {
+		password = s.password
+	}
 	b, err := newBrowser("alice", password)
 	if err != nil {
 		return "", "", false, err
